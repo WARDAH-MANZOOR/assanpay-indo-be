@@ -1,0 +1,205 @@
+// Define routes here... (copy-paste your routes, then update `require` and `module.exports` style to `import` and `export` if needed)
+
+
+// Example: /api/auto-cashin
+// app.post('/api/auto-cashin', async (req: Request, res: Response) => {
+//   try {
+//     const {
+//       currency, amount, orderId, customer_name, customer_email, customer_phone,
+//       customer_address, product, note,
+//     } = req.body;
+
+//     if (!currency || !amount || !orderId) {
+//       return res.status(400).json({ error: 'currency, amount, and orderId are required' });
+//     }
+
+//     const reference = generateUniqueReference(orderId);
+
+//     const payload: Record<string, any> = {
+//       currency,
+//       amount,
+//       reference,
+//       callback_url: process.env.CALLBACK_URL,
+//       redirect_url: process.env.REDIRECT_URL,
+//       customer_name,
+//       customer_email,
+//       customer_phone,
+//       customer_address,
+//       product,
+//       note,
+//     };
+
+//     Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
+
+//     const response = await axios.post(
+//       `${process.env.PAYINX_BASE_URL}/api/v1/create_payment`,
+//       payload,
+//       { headers: getHeaders() }
+//     );
+
+//     if (response.data.status === 200 || response.data.status === 201) {
+//       console.log(response.data);
+//       return res.status(200).json({
+//         status: 'success',
+//         data: response.data,
+//         message: 'Payment initiated successfully',
+//       });
+//     } else {
+//       return res.status(response.data.status).json({
+//         status: 'error',
+//         message: 'Payment initiation failed',
+//         data: response.data,
+//       });
+//     }
+//   } catch (error: any) {
+//     console.error('Error initiating auto cash-in:', error.message);
+//     return res.status(500).json({
+//       status: 'error',
+//       message: error.message,
+//       data: error.response?.data,
+//     });
+//   }
+// });
+
+// // 2. Direct Cash-In (Bkash/Nagad)
+// app.post('/api/direct-cashin', async (req: Request, res: Response) => {
+//   try {
+//     const {
+//       currency, amount, orderId, payment_method, customer_name, customer_email,
+//       customer_phone, customer_address, player_id, product, note,
+//     } = req.body;
+
+//     if (!currency || !amount || !orderId || !payment_method) {
+//       return res.status(400).json({ error: 'currency, amount, orderId, and payment_method are required' });
+//     }
+//     if (!['bkash', 'nagad'].includes(payment_method)) {
+//       return res.status(400).json({ error: 'payment_method must be bkash or nagad' });
+//     }
+
+//     const reference = generateUniqueReference(orderId);
+
+//     const payload: Record<string, any> = {
+//       currency, amount, reference,
+//       callback_url: process.env.CALLBACK_URL,
+//       redirect_url: process.env.REDIRECT_URL,
+//       payment_method, customer_name, customer_email,
+//       customer_phone, customer_address, player_id, product, note
+//     };
+
+//     Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]);
+
+//     const response = await axios.post(
+//       `${process.env.PAYINX_BASE_URL}/api/v1/create_direct_payment`,
+//       payload,
+//       { headers: getHeaders() }
+//     );
+
+//     if (response.status === 200 || response.data.status === 201) {
+//       return res.status(200).json({ status: 'success', data: response.data, message: 'Direct payment initiated successfully' });
+//     } else {
+//       return res.status(response.data.status).json({ status: 'error', message: 'Direct payment initiation failed', data: response.data });
+//     }
+//   } catch (error: any) {
+//     console.error('Error initiating direct cash-in:', error.message);
+//     return res.status(500).json({ status: 'error', message: error.message, data: error.response?.data });
+//   }
+// });
+
+// // 3. Auto Payout
+// app.post('/api/payout', async (req: Request, res: Response) => {
+//   try {
+//     const { amount, currency, payment_method, withdraw_number, orderId, note } = req.body;
+
+//     if (!amount || !currency || !payment_method || !withdraw_number || !orderId) {
+//       return res.status(400).json({ error: 'amount, currency, payment_method, withdraw_number, and orderId are required' });
+//     }
+//     if (!['bkash', 'nagad'].includes(payment_method)) {
+//       return res.status(400).json({ error: 'payment_method must be bkash or nagad' });
+//     }
+
+//     const reference = generateUniqueReference(orderId);
+//     const payload = { amount, currency, payment_method, withdraw_number, callback_url: process.env.CALLBACK_URL, reference, note };
+
+//     const response = await axios.post(
+//       `${process.env.PAYINX_BASE_URL}/api/v1/payout_request`,
+//       payload,
+//       { headers: getHeaders(true) }
+//     );
+
+//     if (response.data.status === 200 || response.data.status === 201) {
+//       return res.status(200).json({ status: 'success', data: response.data, message: 'Payout initiated successfully' });
+//     } else {
+//       return res.status(response.data.status).json({ status: 'error', message: 'Payout initiation failed', data: response.data });
+//     }
+//   } catch (error: any) {
+//     console.error('Error initiating payout:', error.message);
+//     return res.status(500).json({ status: 'error', message: error.message, data: error.response?.data });
+//   }
+// });
+
+// // 4. Payment Status Check
+// app.get('/api/check-payment', async (req: Request, res: Response) => {
+//   try {
+//     const { ref } = req.query;
+//     if (!ref) return res.status(400).json({ error: 'ref query parameter is required' });
+
+//     const response = await axios.get(
+//       `${process.env.PAYINX_BASE_URL}/api/v1/cash_check?ref=${ref}`,
+//       { headers: getHeaders() }
+//     );
+
+//     if (response.data.status === 200 || response.data.status === 201) {
+//       return res.status(200).json({ status: 'success', data: response.data, message: 'Payment status retrieved successfully' });
+//     } else {
+//       return res.status(response.data.status).json({ status: 'error', message: 'Failed to retrieve payment status', data: response.data });
+//     }
+//   } catch (error: any) {
+//     console.error('Error checking payment status:', error.message);
+//     return res.status(500).json({ status: 'error', message: error.message, data: error.response?.data });
+//   }
+// });
+
+// // 5. Payout Status Check
+// app.post('/api/check-payout', async (req: Request, res: Response) => {
+//   try {
+//     const { payment_id } = req.body;
+//     if (!payment_id) return res.status(400).json({ error: 'payment_id is required' });
+
+//     const response = await axios.post(
+//       `${process.env.PAYINX_BASE_URL}/api/v1/payout_check?payment_id=${payment_id}`,
+//       {},
+//       { headers: getHeaders(true) }
+//     );
+
+//     if (response.data.status === 200 || response.data.status === 201) {
+//       return res.status(200).json({ status: 'success', data: response.data, message: 'Payout status retrieved successfully' });
+//     } else {
+//       return res.status(response.data.status).json({ status: 'error', message: 'Failed to retrieve payout status', data: response.data });
+//     }
+//   } catch (error: any) {
+//     console.error('Error checking payout status:', error.message);
+//     return res.status(500).json({ status: 'error', message: error.message, data: error.response?.data });
+//   }
+// });
+
+// // 6. Callback Handler
+// app.post('/api/callback', (req: Request, res: Response) => {
+//   try {
+//     const { reference, status, payment_method } = req.body;
+//     const [orderId] = reference?.split('-') || [];
+
+//     console.log(`Callback received: Order ID: ${orderId}, Reference: ${reference}, Status: ${status}, Payment Method: ${payment_method}`);
+
+//     const validStatuses = ['Success', 'Failed', 'Cancelled', 'Rejected', 'Pending', 'Awaited', 'Onhold'];
+//     if (!validStatuses.includes(status)) {
+//       return res.status(400).json({ status: 'error', message: 'Invalid status' });
+//     }
+
+//     return res.status(200).json({ status: 'success', message: 'Callback received' });
+//   } catch (error: any) {
+//     console.error('Error handling callback:', error.message);
+//     return res.status(500).json({ status: 'error', message: 'Callback processing failed' });
+//   }
+// });
+
+// Add remaining routes the same way...

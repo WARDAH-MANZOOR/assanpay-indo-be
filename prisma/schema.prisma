@@ -1,0 +1,469 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["typedSql"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransactionStatus {
+  completed // Payment completed successfully
+  pending // Payment is pending
+  failed // Payment failed
+  paid // Payment is marked as paid
+}
+
+enum TransactionType {
+  wallet // Wallet-based payment
+  card // Card-based payment
+  bank // Bank transfer
+}
+
+enum ProviderEnum {
+  JAZZCASH // JazzCash payment provider
+  EASYPAISA // Easypaisa payment provider
+}
+
+// Define Enum for Easypaisa Payment Method
+enum PaymentMethodEnum {
+  PAYINX
+  DALALMART
+  SHURJOPAY
+  BKASHSETUP
+}
+
+enum InquiryMethod {
+  DATABASE // Inquiry through database records
+  WALLET // Inquiry through wallet service
+}
+
+enum CallbackMode {
+  SINGLE
+  DOUBLE
+}
+
+enum CommissionMode {
+  SINGLE
+  DOUBLE
+}
+
+model Group {
+  id          Int               @id @default(autoincrement())
+  name        String            
+  permissions GroupPermission[]
+  users       UserGroup[]
+  merchant_id Int?
+  merchant    Merchant? @relation(fields: [merchant_id], references: [merchant_id])
+}
+
+model Permission {
+  id     Int               @id @default(autoincrement())
+  name   String            @unique
+  groups GroupPermission[]
+}
+
+model UserGroup {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  groupId    Int
+  user       User      @relation(fields: [userId], references: [id])
+  group      Group     @relation(fields: [groupId], references: [id])
+  merchantId Int? // merchant association
+  merchant   Merchant? @relation(fields: [merchantId], references: [merchant_id])
+}
+
+model GroupPermission {
+  groupId      Int
+  permissionId Int
+  group        Group      @relation(fields: [groupId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([groupId, permissionId])
+}
+
+model Merchant {
+  uid                 String    @default(uuid())
+  merchant_id         Int       @id @default(autoincrement())
+  full_name           String
+  phone_number        String
+  company_name        String
+  company_url         String?
+  city                String
+  payment_volume      String?
+  user_id             Int
+  webhook_url         String?
+  callback_mode       CallbackMode @default(SINGLE)
+  payout_callback     String?
+  payinxMerchantId    Int?
+  wooMerchantId       Int?
+  dalalMartMerchantId Int?
+  encrypted           String?   @default("false")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime? @updatedAt
+  balanceToDisburse  Decimal?              @default(0.00) @db.Decimal(10, 2)
+  disburseBalancePercent Decimal @default(0.00)
+
+  // Relations
+  disbursementRequests DisbursementRequest[]
+
+  // Relations
+  user_groups                UserGroup[]
+  commissions                MerchantFinancialTerms[]
+  MerchantProviderCredential MerchantProviderCredential[]
+  Disbursement               Disbursement[]
+  SettlementReport           SettlementReport[]
+  groups Group[]
+
+  // Easypaisa-specific
+  depositMethod     PaymentMethodEnum? @default(PAYINX)
+  bkashDepositMethod PaymentMethodEnum? @default(PAYINX)
+  nagadDepositMethod PaymentMethodEnum? @default(PAYINX)
+  withdrawalMethod     PaymentMethodEnum? @default(PAYINX)
+  bkashWithdrawalMethod PaymentMethodEnum? @default(PAYINX)
+  nagadWithdrawalMethod PaymentMethodEnum? @default(PAYINX)
+  depositInquiryMethod     InquiryMethod?     @default(DATABASE)
+  withdrawalInquiryMethod       InquiryMethod?     @default(DATABASE)
+  payinxMerchant             PayinxMerchant?          @relation(fields: [payinxMerchantId], references: [id])
+  wooMerchant                WoocommerceMerchants?      @relation(fields: [wooMerchantId], references: [id])
+  dalalMartMerchant             DalalMartMerchant?          @relation(fields: [dalalMartMerchantId], references: [id])
+
+  easypaisaLimit             Decimal?                   @default(0)
+  swichLimit                 Decimal?                   @default(0)
+  lastSwich                  DateTime                   @default(now())
+  @@index([phone_number])
+
+  Refund Refund[]
+  DisbursementDispute DisbursementDispute[]
+  ChargeBack ChargeBack[]
+  FromTopup Topup[] @relation("TopupFromMerchant")
+  ToTopup Topup[] @relation("TopupToMerchant")
+}
+
+model MerchantProviderCredential {
+  id          Int      @id @default(autoincrement())
+  merchant_id Int
+  merchant    Merchant @relation(fields: [merchant_id], references: [merchant_id])
+
+  provider ProviderEnum // Enum for provider
+
+  // Credential Fields
+  merchantOrStoreId   String
+  passwordOrHashKey   String
+  returnOrPostBackUrl String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([merchant_id, provider])
+}
+
+model MerchantFinancialTerms {
+  id          Int      @id @default(autoincrement())
+  merchant_id Int      @unique
+  merchant    Merchant @relation(fields: [merchant_id], references: [merchant_id])
+
+  commissionMode             CommissionMode? @default(SINGLE) 
+  commissionRate             Decimal
+  easypaisaRate              Decimal?
+  cardRate                   Decimal? @default(0)
+  commissionWithHoldingTax   Decimal
+  commissionGST              Decimal
+  disbursementRate           Decimal
+  disbursementWithHoldingTax Decimal
+  disbursementGST            Decimal
+  settlementDuration         Int // Number of days for settlement
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([merchant_id])
+}
+
+model User {
+  id       Int         @id @default(autoincrement())
+  username String
+  email    String      @unique
+  password String
+  groups   UserGroup[]
+
+  // Transactions as Merchant
+  merchantTransactions Transaction[] @relation("MerchantTransactions")
+
+  // Transactions as Customer
+  customerTransactions Transaction[] @relation("CustomerTransactions")
+
+  apiKey        String? @unique
+  decryptionKey String? @unique
+
+  @@index([email])
+  USDTSettlement USDTSettlement[] @relation("MerchantUSDTSettlements")
+}
+
+model Transaction {
+  transaction_id          String            @id @default(uuid())
+  date_time               DateTime
+  original_amount         Decimal?
+  status                  TransactionStatus
+  type                    TransactionType
+  response_message        String?
+  settlement              Boolean           @default(false)
+  settled_amount          Decimal?
+  balance                 Decimal           @default(0)
+  merchant_transaction_id String?           @unique // Unique ID for merchant
+
+  merchant_id Int
+  customer_id Int?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime? @updatedAt
+
+  // Relations
+  merchant        User             @relation("MerchantTransactions", fields: [merchant_id], references: [id])
+  customer        User?            @relation("CustomerTransactions", fields: [customer_id], references: [id])
+  AdditionalInfo  AdditionalInfo[]
+  Provider        Provider?        @relation(fields: [providerId], references: [id])
+  providerId      Int?
+  ScheduledTask   ScheduledTask?
+  PaymentRequest  PaymentRequest?
+  providerDetails Json?
+  callback_sent   Boolean?
+  callback_response String?
+
+  @@index([merchant_transaction_id])
+}
+
+model AdditionalInfo {
+  id                        Int          @id @default(autoincrement())
+  bank_id                   String? // Bank ID for JazzCash
+  bill_reference            String? // Bill reference number
+  retrieval_ref             String? // Retrieval reference number
+  sub_merchant_id           String? // Optional sub-merchant ID
+  settlement_expiry         String? // Optional settlement expiry time
+  custom_field_1            String? // Optional custom field
+  custom_field_2            String?
+  custom_field_3            String?
+  custom_field_4            String?
+  custom_field_5            String?
+  transaction               Transaction? @relation(fields: [transactionTransaction_id], references: [transaction_id]) // One-to-many relation to transactions
+  transactionTransaction_id String?
+}
+
+model Provider {
+  id           Int           @id @default(autoincrement())
+  name         String // e.g., JazzCash, Easypaisa
+  txn_type     String? // Transaction type (MWALLET, etc.)
+  version      String? // API version
+  transactions Transaction[] // One-to-many relationship with transactions
+
+  @@unique([name, txn_type, version]) // Composite unique index
+}
+
+model ScheduledTask {
+  id            Int         @id @default(autoincrement())
+  transactionId String      @unique
+  status        String      @db.VarChar(50)
+  scheduledAt   DateTime?   @db.Timestamptz
+  executedAt    DateTime?   @db.Timestamptz
+  transaction   Transaction @relation(fields: [transactionId], references: [transaction_id])
+}
+
+model SettlementReport {
+  id                Int      @id @default(autoincrement())
+  merchant_id       Int
+  merchant          Merchant @relation(fields: [merchant_id], references: [merchant_id])
+  settlementDate    DateTime
+  transactionCount  Int
+  transactionAmount Decimal
+  commission        Decimal
+  gst               Decimal
+  withholdingTax    Decimal
+  merchantAmount    Decimal
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([merchant_id, settlementDate]) // Prevent duplicate settlements for the same merchant and date
+}
+
+model USDTSettlement {
+  id                Int      @id @default(autoincrement())
+  merchant_id       Int
+  date              DateTime @default(now())
+  pkr_amount        Float
+  usdt_amount       Float
+  usdt_pkr_rate     Float
+  conversion_charges String
+  total_usdt        Float
+  wallet_address    String
+  
+  merchant        User             @relation("MerchantUSDTSettlements", fields: [merchant_id], references: [id])
+  
+  @@map("usdt_settlements")
+}
+
+model PayinxMerchant {
+  id             Int        @id @default(autoincrement())
+  secretKey      String
+  publicKey      String
+  merchant_of    String?
+  merchantId     Int
+  merchant       Merchant[] // One-to-many relationship with Merchant
+}
+
+model DalalMartMerchant {
+  id             Int        @id @default(autoincrement())
+  clientId       String
+  clientSecret   String
+  username       String
+  password       String
+  merchant       Merchant[] // One-to-many relationship with Merchant
+}
+
+model Disbursement {
+  id                       Int      @id @default(autoincrement())
+  transaction_id           String   @default(uuid())
+  merchant_id              Int
+  disbursementDate         DateTime
+  transactionAmount        Decimal
+  merchantAmount           Decimal
+  commission               Decimal
+  gst                      Decimal
+  withholdingTax           Decimal
+  platform                 Decimal?
+  account                  String?
+  provider                 String?
+  to_provider              String?
+  merchant_custom_order_id String?  @unique // Added for custom inquiries
+  system_order_id    String? // ID for payin-specific transactions
+  status                   String   @default("completed")
+  response_message         String   @default("success")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  callback_sent Boolean?
+  callback_response String?
+  providerDetails          Json? @default("{}")
+  // Relations
+  merchant Merchant @relation(fields: [merchant_id], references: [merchant_id])
+
+}
+
+model PaymentRequest {
+  id            String            @id @unique @default(uuid())
+  transactionId String?           @unique
+  transaction   Transaction?      @relation(fields: [transactionId], references: [transaction_id])
+  email         String
+  amount        Decimal
+  description   String?
+  dueDate       DateTime?
+  status        TransactionStatus @default(pending)
+  link          String?
+  metadata      Json?             @default("{}")
+  provider      String?
+  userId        Int?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  merchant_transaction_id String? @unique
+}
+
+model DisbursementRequest {
+  id               Int      @id @default(autoincrement())
+  merchantId       Int
+  requestedAmount  Decimal  @db.Decimal(10, 2)
+  status           String   @default("PENDING") // Enum can be used for stricter validation
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  merchant         Merchant @relation(fields: [merchantId], references: [merchant_id])
+
+}
+
+model DisbursementDispute {
+  id                Int     @id @default(autoincrement())
+  transactionId     String
+  orderId           String
+  account           String
+  amount            Float
+  disbursementDate  DateTime
+  sender            String
+  status            String?
+  message           String?    
+  merchant_id       Int 
+  merchant          Merchant @relation(fields: [merchant_id], references: [merchant_id])
+}
+
+model Refund {
+  id                       Int      @id @default(autoincrement())
+  transaction_id           String   @default(uuid())
+  merchant_id              Int
+  disbursementDate         DateTime
+  transactionAmount        Decimal
+  merchantAmount           Decimal
+  commission               Decimal
+  gst                      Decimal
+  withholdingTax           Decimal
+  platform                 Decimal?
+  account                  String?
+  provider                 String?
+  merchant_custom_order_id String?  @unique // Added for custom inquiries
+  system_order_id          String? // ID for payin-specific transactions
+  status                   String   @default("completed")
+  response_message         String   @default("success")
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  deletedAt                DateTime?
+  callback_sent            Boolean?
+  callback_response        String?
+  reason                   String?
+  // Relations
+  merchant Merchant @relation(fields: [merchant_id], references: [merchant_id])
+}
+
+model BlockedPhoneNumbers {
+  id                       Int      @unique @default(autoincrement())
+  phoneNumber              String   @unique 
+}
+
+model WoocommerceMerchants {
+  id                       Int @unique @default(autoincrement())
+  baseUrl                  String
+  username                 String
+  password                 String
+  Merchant Merchant[]
+}
+
+model ChargeBack {
+  id               Int      @id @default(autoincrement())
+  merchantId       Int
+  amount           Decimal  @db.Decimal(10, 2)
+  orderId          String   @unique // Enum can be used for stricter validation
+  reason           String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  merchant         Merchant @relation(fields: [merchantId], references: [merchant_id])
+}
+
+model Topup {
+  id               Int      @id @default(autoincrement())
+  fromMerchantId     Int
+  amount           Decimal  @db.Decimal(10, 2)
+  orderId          String    // Enum can be used for stricter validation
+  toMerchantId     Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  reason           String?
+  // Relations
+  fromMerchant Merchant @relation("TopupFromMerchant", fields: [fromMerchantId], references: [merchant_id])
+  toMerchant   Merchant @relation("TopupToMerchant", fields: [toMerchantId], references: [merchant_id])
+}

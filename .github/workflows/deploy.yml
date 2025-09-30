@@ -1,0 +1,435 @@
+on:
+  push:
+    branches: [main]    # ← Change “clone” to your actual deploy branch if needed
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout your repo so we can send it to EC2
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      # 2️⃣ Clean up old releases on EC2 (keep last 5)
+      - name: Cleanup old releases on EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            RELEASES_DIR=~/assanpay-ban-be/releases
+            # Remove any but the 5 most recent
+            ls -1dt "$RELEASES_DIR"/*/ | tail -n +6 | xargs rm -rf || true
+
+      # 3️⃣ Sync code to a brand-new release folder named by the git SHA
+      - name: Sync code to new release folder on EC2
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          source: "./"
+          target: "~/assanpay-ban-be/releases/${{ github.sha }}"
+          rm: true
+       
+
+
+      # 4️⃣ Install & configure CloudWatch Agent
+      - name: Install & configure CloudWatch Agent
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host:     ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key:      ${{ secrets.EC2_SSH_KEY }}
+          port:     22
+          script: |
+            if ! command -v amazon-cloudwatch-agent-ctl >/dev/null; then
+              sudo yum install -y amazon-cloudwatch-agent
+            fi
+            sudo mkdir -p /opt/aws/amazon-cloudwatch-agent/etc/
+            sudo tee /opt/aws/amazon-cloudwatch-agent/etc/config.json << 'EOF'
+            {
+              "logs": {
+                "logs_collected": {
+                  "files": {
+                    "collect_list": [
+                      {
+                        "file_path": "/home/ec2-user/assanpay-ban-be/current/logs/app-out.log",
+                        "log_group_name": "/assanpay-ban-be/app/out",
+                        "log_stream_name": "{instance_id}"
+                      },
+                      {
+                        "file_path": "/home/ec2-user/assanpay-ban-be/current/logs/app-error.log",
+                        "log_group_name": "/assanpay-ban-be/app/error",
+                        "log_stream_name": "{instance_id}"
+                      },
+                      {
+                        "file_path": "/var/log/nginx/access.log",
+                        "log_group_name": "/assanpay-ban-be/nginx/access",
+                        "log_stream_name": "{instance_id}"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+            EOF
+            sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+              -a fetch-config -m ec2 \
+              -c file:/opt/aws/amazon-cloudwatch-agent/etc/config.json \
+              -s
+
+     
+     
+      # 4️⃣ Build, start new PM2, swap Nginx, and retire old PM2
+      - name: Build, spin up new PM2 instance & switch Nginx
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+
+            # ──────────────────────────────────────────────────────────
+            # A) Define directories & dynamically figure out ports
+            # ──────────────────────────────────────────────────────────
+            RELEASE_DIR=~/assanpay-ban-be/releases/${{ github.sha }}
+            CURRENT_LINK=~/assanpay-ban-be/current
+
+            # Read from Nginx config: which port is currently live?
+            # We look for “127.0.0.1:3000” or “127.0.0.1:3001” in the upstream block.
+            CURRENT_PORT=$(
+              grep -oP '127\.0\.0\.1:\K(3000|3001)' /etc/nginx/conf.d/api5.assanpay.com.conf
+            )
+
+            # If Nginx was never updated, default to 3000
+            if [ -z "$CURRENT_PORT" ]; then
+              CURRENT_PORT=3000
+            fi
+
+            if [ "$CURRENT_PORT" = "3000" ]; then
+              OLD_PORT=3000
+              NEW_PORT=3001
+            else
+              OLD_PORT=3001
+              NEW_PORT=3000
+            fi
+
+            OLD_PROC_NAME="sp-$OLD_PORT"
+            NEW_PROC_NAME="sp-$NEW_PORT"
+
+            # ──────────────────────────────────────────────────────────
+            # B) Write .env for the new release (including PORT)
+            # ──────────────────────────────────────────────────────────
+            cat > "$RELEASE_DIR/.env" <<EOF
+            PORT=$NEW_PORT
+            PAYOUT_CALLBACK_URL=${{secrets.PAYOUT_CALLBACK_URL}}
+            PAYINX_SECRET_KEY=${{secrets.PAYINX_SECRET_KEY}}
+            PAYINX_PUBLIC_KEY=${{secrets.PAYINX_PUBLIC_KEY}}
+            PAYINX_BASE_URL=${{secrets.PAYINX_BASE_URL}}
+            CALLBACK_URL=${{secrets.CALLBACK_URL}}
+            REDIRECT_URL=${{secrets.REDIRECT_URL}}
+            DATABASE_URL="${{secrets.DATABASE_URL}}"
+            JWT_SECRET="${{secrets.JWT_SECRET}}"
+            ENCRYPTION_KEY="${{secrets.ENCRYPTION_KEY}}"
+            ENCRYPTION_ALGO="${{secrets.ENCRYPTION_ALGO}}"
+            publicKey="${{secrets.PUBLIC_KEY}}"
+            data="${{secrets.DATA}}"
+            PG_USERNAME="${{secrets.PG_USERNAME}}"
+            PG_PASSWORD="${{secrets.PG_PASSWORD}}"
+            PG_HOST="${{secrets.PG_HOST}}"
+            PG_PORT="${{secrets.PG_PORT}}"
+            PG_DATABASE="${{secrets.PG_DATABASE}}"
+            TZ="${{secrets.TZ}}"
+            REDIS_KEY="${{secrets.REDIS_KEY}}"
+            SJ_USERNAME="${{secrets.SJ_USERNAME}}"
+            SJ_PASSWORD="${{secrets.SJ_PASSWORD}}"
+            SJ_BASE_URL="${{secrets.SJ_BASE_URL}}"
+            EOF
+
+
+            # ──────────────────────────────────────────────────────────
+            # C) Build the new release
+            # ──────────────────────────────────────────────────────────
+            cd $RELEASE_DIR
+            npm cache clean --force
+            npm ci
+            npm run build
+
+            # ──────────────────────────────────────────────────────────
+            # D) Symlink “current” → this new release (so we can run “npm start” there)
+            # ──────────────────────────────────────────────────────────
+            ln -nfs $RELEASE_DIR $CURRENT_LINK
+
+            # ──────────────────────────────────────────────────────────
+            # E) Start the “new” PM2 process on $NEW_PORT
+            # ──────────────────────────────────────────────────────────
+            cd $CURRENT_LINK
+
+            # We rely on your package.json “start” script, which must do something like:
+            #    node dist/app.js
+            # and in the app code: `const PORT = process.env.PORT || 3000`
+            # pm2 start npm --name "$NEW_PROC_NAME" -- run start --env PORT=$NEW_PORT
+              
+              pm2 start npm \
+              --name "$NEW_PROC_NAME" \
+              --output /home/ec2-user/assanpay-ban-be/current/logs/app-out.log \
+              --error  /home/ec2-user/assanpay-ban-be/current/logs/app-error.log \
+              -- run start --env PORT=$NEW_PORT
+
+            # ──────────────────────────────────────────────────────────
+            # F) Wait for new process to be up (replace with a real health-check if you want)
+            # ──────────────────────────────────────────────────────────
+            echo "⏳ Waiting for the new Node instance ($NEW_PROC_NAME) on port $NEW_PORT…"
+            sleep 15
+
+            # ──────────────────────────────────────────────────────────
+            # G) Swap Nginx upstream from $OLD_PORT → $NEW_PORT
+            # ──────────────────────────────────────────────────────────
+            sudo sed -i 's/127.0.0.1:'"$OLD_PORT"'/127.0.0.1:'"$NEW_PORT"'/g' /etc/nginx/conf.d/api5.assanpay.com.conf
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            # ──────────────────────────────────────────────────────────
+            # H) Stop & delete the old PM2 process (if it exists)
+            # ──────────────────────────────────────────────────────────
+            pm2 stop "$OLD_PROC_NAME" || true
+            pm2 delete "$OLD_PROC_NAME" || true
+
+            # ──────────────────────────────────────────────────────────
+            # I) Save the updated PM2 process list (so it survives reboots)
+            # ──────────────────────────────────────────────────────────
+            pm2 save
+
+            echo "✅ Deploy complete: Node is now serving on port $NEW_PORT (Nginx points there)."
+
+
+
+# name: Deploy to EC2
+# on:
+#   push:
+#     branches: [main]    
+
+# jobs:
+#   deploy:
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       # 1️⃣ Checkout your repo so we can send it to EC2
+#       - name: Check out code
+#         uses: actions/checkout@v4
+
+#       # 2️⃣ Clean up old releases on EC2 (keep last 5)
+#       - name: Cleanup old releases on EC2
+#         uses: appleboy/ssh-action@v1.0.0
+#         with:
+#           host: ${{ secrets.EC2_HOST }}
+#           username: ec2-user
+#           key: ${{ secrets.EC2_SSH_KEY }}
+#           port: 22
+#           script: |
+#             RELEASES_DIR=~/assanpay-ban-be/releases
+#             # Remove any but the 5 most recent
+#             ls -1dt "$RELEASES_DIR"/*/ | tail -n +6 | xargs rm -rf || true
+
+#       # 3️⃣ Sync code to a brand-new release folder named by the git SHA
+#       - name: Sync code to new release folder on EC2
+#         uses: appleboy/scp-action@v0.1.4
+#         with:
+#           host: ${{ secrets.EC2_HOST }}
+#           username: ec2-user
+#           key: ${{ secrets.EC2_SSH_KEY }}
+#           port: 22
+#           source: "./"
+#           target: "~/assanpay-ban-be/releases/${{ github.sha }}"
+#           rm: true
+       
+
+
+#       # 4️⃣ Install & configure CloudWatch Agent
+#       - name: Install & configure CloudWatch Agent
+#         uses: appleboy/ssh-action@v1.0.0
+#         with:
+#           host:     ${{ secrets.EC2_HOST }}
+#           username: ec2-user
+#           key:      ${{ secrets.EC2_SSH_KEY }}
+#           port:     22
+#           script: |
+#             if ! command -v amazon-cloudwatch-agent-ctl >/dev/null; then
+#               sudo yum install -y amazon-cloudwatch-agent
+#             fi
+#             sudo mkdir -p /opt/aws/amazon-cloudwatch-agent/etc/
+#             sudo tee /opt/aws/amazon-cloudwatch-agent/etc/config.json << 'EOF'
+#             {
+#               "logs": {
+#                 "logs_collected": {
+#                   "files": {
+#                     "collect_list": [
+#                       {
+#                         "file_path": "/home/ec2-user/assanpay-ban-be/current/logs/app-out.log",
+#                         "log_group_name": "/assanpay-ban-be/app/out",
+#                         "log_stream_name": "{instance_id}"
+#                       },
+#                       {
+#                         "file_path": "/home/ec2-user/assanpay-ban-be/current/logs/app-error.log",
+#                         "log_group_name": "/assanpay-ban-be/app/error",
+#                         "log_stream_name": "{instance_id}"
+#                       },
+#                       {
+#                         "file_path": "/var/log/nginx/access.log",
+#                         "log_group_name": "/assanpay-ban-be/nginx/access",
+#                         "log_stream_name": "{instance_id}"
+#                       }
+#                     ]
+#                   }
+#                 }
+#               }
+#             }
+#             EOF
+#             sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+#               -a fetch-config -m ec2 \
+#               -c file:/opt/aws/amazon-cloudwatch-agent/etc/config.json \
+#               -s
+
+     
+
+#       # 4️⃣ Build, start new PM2, swap Nginx, and retire old PM2
+#       - name: Build, spin up new PM2 instance & switch Nginx
+#         uses: appleboy/ssh-action@v1.0.0
+#         with:
+#           host: ${{ secrets.EC2_HOST }}
+#           username: ec2-user
+#           key: ${{ secrets.EC2_SSH_KEY }}
+#           port: 22
+#           script: |
+#             set -e
+
+#             # ──────────────────────────────────────────────────────────
+#             # A) Define directories & dynamically figure out ports
+#             # ──────────────────────────────────────────────────────────
+#             RELEASE_DIR=~/assanpay-ban-be/releases/${{ github.sha }}
+#             CURRENT_LINK=~/assanpay-ban-be/current
+
+#             # Read from Nginx config: which port is currently live?
+#             # We look for “127.0.0.1:3000” or “127.0.0.1:3001” in the upstream block.
+#             CURRENT_PORT=$(
+#               grep -oP '127\.0\.0\.1:\K(3000|3001)' /etc/nginx/conf.d/api5.assanpay.com.conf
+#             )
+
+#             # If Nginx was never updated, default to 3000
+#             if [ -z "$CURRENT_PORT" ]; then
+#               CURRENT_PORT=3000
+#             fi
+
+#             if [ "$CURRENT_PORT" = "3000" ]; then
+#               OLD_PORT=3000
+#               NEW_PORT=3001
+#             else
+#               OLD_PORT=3001
+#               NEW_PORT=3000
+#             fi
+
+#             OLD_PROC_NAME="sp-$OLD_PORT"
+#             NEW_PROC_NAME="sp-$NEW_PORT"
+
+#             # ──────────────────────────────────────────────────────────
+#             # B) Write .env for the new release (including PORT)
+#             # ──────────────────────────────────────────────────────────
+#             cat > "$RELEASE_DIR/.env" <<EOF
+#             PORT=$NEW_PORT
+#             PAYOUT_CALLBACK_URL=${{secrets.PAYOUT_CALLBACK_URL}}
+#             PAYINX_SECRET_KEY=${{secrets.PAYINX_SECRET_KEY}}
+#             PAYINX_PUBLIC_KEY=${{secrets.PAYINX_PUBLIC_KEY}}
+#             PAYINX_BASE_URL=${{secrets.PAYINX_BASE_URL}}
+#             CALLBACK_URL=${{secrets.CALLBACK_URL}}
+#             REDIRECT_URL=${{secrets.REDIRECT_URL}}
+#             DATABASE_URL="${{secrets.DATABASE_URL}}"
+#             JWT_SECRET="${{secrets.JWT_SECRET}}"
+#             ENCRYPTION_KEY="${{secrets.ENCRYPTION_KEY}}"
+#             ENCRYPTION_ALGO="${{secrets.ENCRYPTION_ALGO}}"
+#             publicKey="${{secrets.PUBLIC_KEY}}"
+#             data="${{secrets.DATA}}"
+#             PG_USERNAME="${{secrets.PG_USERNAME}}"
+#             PG_PASSWORD="${{secrets.PG_PASSWORD}}"
+#             PG_HOST="${{secrets.PG_HOST}}"
+#             PG_PORT="${{secrets.PG_PORT}}"
+#             PG_DATABASE="${{secrets.PG_DATABASE}}"
+#             TZ="${{secrets.TZ}}"
+#             REDIS_KEY="${{secrets.REDIS_KEY}}"
+#             SJ_USERNAME="${{secrets.SJ_USERNAME}}"
+#             SJ_PASSWORD="${{secrets.SJ_PASSWORD}}"
+#             SJ_BASE_URL="${{secrets.SJ_BASE_URL}}"
+#             EOF
+
+
+#             # ──────────────────────────────────────────────────────────
+#             # C) Build the new release
+#             # ──────────────────────────────────────────────────────────
+#             cd $RELEASE_DIR
+#             npm cache clean --force
+#             npm ci
+#             npm run build
+
+#             # ──────────────────────────────────────────────────────────
+#             # D) Symlink “current” → this new release (so we can run “npm start” there)
+#             # ──────────────────────────────────────────────────────────
+#             ln -nfs $RELEASE_DIR $CURRENT_LINK
+
+#             # ──────────────────────────────────────────────────────────
+#             # E) Start the “new” PM2 process on $NEW_PORT
+#             # ──────────────────────────────────────────────────────────
+#             cd $CURRENT_LINK
+
+#             # We rely on your package.json “start” script, which must do something like:
+#             #    node dist/app.js
+#             # and in the app code: `const PORT = process.env.PORT || 3000`
+#                         # pm2 start npm --name "$NEW_PROC_NAME" -- run start --env PORT=$NEW_PORT
+            
+#             # Start PM2 with maximum clusters for optimal performance
+#             # --instances max: Use maximum number of CPU cores for clustering
+#             # --max-memory-restart 1G: Restart process if memory exceeds 1GB
+#             pm2 start npm \
+#               --name "$NEW_PROC_NAME" \
+#               --instances max \
+#               --max-memory-restart 1G \
+#               --output /home/ec2-user/assanpay-ban-be/current/logs/app-out.log \
+#               --error  /home/ec2-user/assanpay-ban-be/current/logs/app-error.log \
+#               -- run start --env PORT=$NEW_PORT
+
+#             # ──────────────────────────────────────────────────────────
+#             # F) Wait for new process to be up (replace with a real health-check if you want)
+#             # ──────────────────────────────────────────────────────────
+#             echo "⏳ Waiting for the new Node instance ($NEW_PROC_NAME) on port $NEW_PORT…"
+#             sleep 15
+
+#             # ──────────────────────────────────────────────────────────
+#             # G) Swap Nginx upstream from $OLD_PORT → $NEW_PORT
+#             # ──────────────────────────────────────────────────────────
+#             sudo sed -i 's/127.0.0.1:'"$OLD_PORT"'/127.0.0.1:'"$NEW_PORT"'/g' /etc/nginx/conf.d/api5.assanpay.com.conf
+#             sudo nginx -t
+#             sudo systemctl reload nginx
+
+#             # ──────────────────────────────────────────────────────────
+#             # H) Stop & delete the old PM2 process (if it exists)
+#             # ──────────────────────────────────────────────────────────
+#             pm2 stop "$OLD_PROC_NAME" || true
+#             pm2 delete "$OLD_PROC_NAME" || true
+
+#             # ──────────────────────────────────────────────────────────
+#             # I) Save the updated PM2 process list (so it survives reboots)
+#             # ──────────────────────────────────────────────────────────
+#             pm2 save
+            
+#             # ──────────────────────────────────────────────────────────
+#             # J) Display PM2 cluster status for monitoring
+#             # ──────────────────────────────────────────────────────────
+#             echo "📊 PM2 Cluster Status:"
+#             pm2 list
+#             echo "🔄 PM2 Cluster Info:"
+#             pm2 show "$NEW_PROC_NAME"
