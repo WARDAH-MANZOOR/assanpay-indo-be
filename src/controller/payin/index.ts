@@ -1,5 +1,5 @@
 import axios from "axios";
-import { Request, Response } from "express";
+import { Request, RequestHandler, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
@@ -421,59 +421,96 @@ const directPayin = async (req: Request, res: Response) => {
   }
 }
 
-export const IndoPayin = async (req: Request, res: Response) => {
+export const IndoPayin: RequestHandler = async (req: Request, res: Response) => {
   const { merchantId } = req.params;
-  const { payMethod } = req.body; // e.g. "OVO", "QRIS", "DANA"
+  const { payMethod } = req.body;
 
   console.log("Indonesia Payin Request:", { merchantId, payMethod });
 
   const merchant = await prisma.merchant.findFirst({
     where: { uid: merchantId },
     select: {
-      indoDepositMethod: true, // STARPAGO | LAUNCX
+      depositMethod: true,
+      qrisDepositMethod: true,
+      ovoDepositMethod: true,
+      danaDepositMethod: true,
+      gopayDepositMethod: true,
+      linkajaDepositMethod: true,
+      shopeepayDepositMethod: true,
+      vaDepositMethod: true,
     },
   });
 
   if (!merchant) {
-    return res.status(400).json({ error: "Merchant not found" });
+    res.status(400).json({ error: "Merchant not found" });
+    return
   }
 
-  const depositMethod = merchant.indoDepositMethod;
-  console.log("Selected deposit method:", depositMethod);
+  // 🔹 Pick deposit method
+  let depositMethod: string | null | undefined;
 
-  // 🔹 Step 1: validate wallet/payMethod
-  const validWallets = [
-    PROVIDERS.OVO,
-    PROVIDERS.DANA,
-    PROVIDERS.QRIS,
-    PROVIDERS.GOPAY,
-    PROVIDERS.LINKAJA,
-    PROVIDERS.SHOPEEPAY,
-    PROVIDERS.VA,
-  ];
-
-  if (!validWallets.includes(payMethod)) {
-    return res.status(400).json({ error: "Invalid payMethod" });
+  switch ((payMethod || "").toLowerCase()) {
+    case PROVIDERS.QRIS:
+      depositMethod = merchant.qrisDepositMethod;
+      break;
+    case PROVIDERS.OVO:
+      depositMethod = merchant.ovoDepositMethod;
+      break;
+    case PROVIDERS.DANA:
+      depositMethod = merchant.danaDepositMethod;
+      break;
+    case PROVIDERS.GOPAY:
+      depositMethod = merchant.gopayDepositMethod;
+      break;
+    case PROVIDERS.LINKAJA:
+      depositMethod = merchant.linkajaDepositMethod;
+      break;
+    case PROVIDERS.SHOPEEPAY:
+      depositMethod = merchant.shopeepayDepositMethod;
+      break;
+    case PROVIDERS.VA:
+      depositMethod = merchant.vaDepositMethod;
+      break;
+    default:
+      depositMethod = merchant.depositMethod; // fallback
+      break;
   }
 
-  // 🔹 Step 2: routing logic
-  if (payMethod === PROVIDERS.QRIS) {
-    // QRIS can be Launcx OR StarPago
-    if (depositMethod === PROVIDERS.LAUNCX) {
-      console.log("🚀 Routing QRIS to Launcx");
-      return await LauncxPayment(req, res);
-    } else if (depositMethod === PROVIDERS.STARPAGO) {
-      console.log("🚀 Routing QRIS to StarPago");
-      return await StarPagoPayin(req, res);
-    } else {
-      return res.status(500).json({ error: "No provider for QRIS" });
-    }
-  } else {
-    // Other wallets always StarPago
-    console.log("🚀 Routing", payMethod, "to StarPago");
-    return await StarPagoPayin(req, res);
+  if (!depositMethod) {
+    res.status(500).json({ error: "No deposit method configured for this wallet" });
+    return
   }
+
+    const provider = depositMethod.toLowerCase();
+
+// Map aliases
+const providerAlias: Record<string, string> = {
+  payinx: PROVIDERS.LAUNCX.toLowerCase(),
+  launcx: PROVIDERS.LAUNCX.toLowerCase(),
+  starpago: PROVIDERS.STARPAGO.toLowerCase(),
 };
+
+const normalizedProvider = providerAlias[provider] || provider;
+
+if (normalizedProvider === PROVIDERS.LAUNCX.toLowerCase()) {
+  await LauncxPayment(req, res);
+  return;
+} else if (normalizedProvider === PROVIDERS.STARPAGO.toLowerCase()) {
+  if (!payMethod) {
+    res.status(400).json({ error: "payMethod is required for StarPago" });
+    return;
+  }
+  await StarPagoPayin(req, res);
+  return;
+} else {
+  res.status(500).json({ error: `No provider configured for this wallet (${provider})` });
+  return;
+}
+
+
+};
+
+
 export default {
   autoCashinController,
   directPayin,

@@ -1,5 +1,7 @@
 import { Application } from "express";
 import autoCashin from "./payin/index.js"
+import IndoPayin from "./payin/indoPayin.js"
+
 import callback from "./callback/index.js"
 import merchant from "./merchant/index.js";
 import dashboard from "./dashboard/index.js";
@@ -28,6 +30,7 @@ import topup from "./topup/index.js"
 
 export default function (app: Application) {
     app.use("/api/cashin", autoCashin);
+    app.use("/api/payin", IndoPayin);
     app.use("/api/callback", callback);
     app.use("/api/status-inquiry", statusInquiry);
     app.use("/api/cashout", payout);

@@ -8,6 +8,8 @@ import { Request, Response } from "express";
 import { merchantService, transactionService } from "../../services/index.js";
 import { v4 as uuidv4 } from "uuid"
 import dalalmart from "./dalalmart.js";
+import starPago from "./StarPago.js";
+
 
 const generateUniqueReference = (orderId: string) => {
     const uniqueId = uuidv4().replace(/-/g, '');
@@ -98,6 +100,75 @@ const adjustMerchantToDisburseBalance = async (merchantId: string, amount: numbe
 function stringToBoolean(value: string): boolean {
     return value.toLowerCase() === "true";
 }
+const IndoPayout = async (req: Request, res: Response) => {
+  const { merchantId } = req.params;
+  const body = req.body;
+
+  // ⭐ Minimum withdrawal for Indonesia
+  if (Number(body.amount) < 10000) {
+    return res
+      .status(400)
+      .json({ error: "Minimum 10,000 IDR is required for withdrawal" });
+  }
+
+  // ⭐ Find merchant & its withdrawal methods
+  const merchant = await prisma?.merchant.findFirst({
+    where: {
+      uid: merchantId,
+    },
+    select: {
+      withdrawalMethod: true,
+      qrisWithdrawalMethod: true,
+      ovoWithdrawalMethod: true,
+      danaWithdrawalMethod: true,
+      gopayWithdrawalMethod: true,
+      shopeepayWithdrawalMethod: true,
+      linkajaWithdrawalMethod: true,
+      vaWithdrawalMethod: true,
+    },
+  });
+
+  if (!merchant) {
+    return res.status(400).json({ error: "Merchant Not Found" });
+  }
+
+  // ⭐ Decide withdrawal method based on payment_method
+  let withdrawalMethod: string = "";
+  switch (body.payment_method) {
+    case "qris":
+      withdrawalMethod = merchant.qrisWithdrawalMethod as string;
+      break;
+    case "ovo":
+      withdrawalMethod = merchant.ovoWithdrawalMethod as string;
+      break;
+    case "dana":
+      withdrawalMethod = merchant.danaWithdrawalMethod as string;
+      break;
+    case "gopay":
+      withdrawalMethod = merchant.gopayWithdrawalMethod as string;
+      break;
+    case "shopeepay":
+      withdrawalMethod = merchant.shopeepayWithdrawalMethod as string;
+      break;
+    case "linkaja":
+      withdrawalMethod = merchant.linkajaWithdrawalMethod as string;
+      break;
+    case "va":
+      withdrawalMethod = merchant.vaWithdrawalMethod as string;
+      break;
+    default:
+      return res.status(400).json({ error: "Invalid payment_method" });
+  }
+
+  // ⭐ For Indonesia → always call StarPago controller
+  if (withdrawalMethod === "STARPAGO") {
+    await starPago.starPagoPayoutController(req, res);
+  } else {
+    return res
+      .status(400)
+      .json({ error: "Unsupported withdrawal provider for Indonesia" });
+  }
+};
 
 const payout = async (req: Request, res: Response) => {
     const { merchantId } = req.params;
@@ -114,6 +185,7 @@ const payout = async (req: Request, res: Response) => {
         withdrawalMethod: true,
         bkashWithdrawalMethod: true,
         nagadWithdrawalMethod: true
+        
       }
     })
   

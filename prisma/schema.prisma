@@ -38,6 +38,8 @@ enum PaymentMethodEnum {
   DALALMART
   SHURJOPAY
   BKASHSETUP
+  STARPAGO
+  LAUNCX
 }
 
 enum InquiryMethod {
@@ -129,6 +131,27 @@ model Merchant {
   withdrawalMethod     PaymentMethodEnum? @default(PAYINX)
   bkashWithdrawalMethod PaymentMethodEnum? @default(PAYINX)
   nagadWithdrawalMethod PaymentMethodEnum? @default(PAYINX)
+
+
+  // Indonesia wallets
+  qrisDepositMethod       PaymentMethodEnum? @default(STARPAGO)
+  ovoDepositMethod        PaymentMethodEnum? @default(STARPAGO)
+  danaDepositMethod       PaymentMethodEnum? @default(STARPAGO)
+  gopayDepositMethod      PaymentMethodEnum? @default(STARPAGO)
+  linkajaDepositMethod    PaymentMethodEnum? @default(STARPAGO)
+  shopeepayDepositMethod  PaymentMethodEnum? @default(STARPAGO)
+  vaDepositMethod         PaymentMethodEnum? @default(STARPAGO)
+
+  // Withdrawals
+  qrisWithdrawalMethod       PaymentMethodEnum? @default(STARPAGO)
+  ovoWithdrawalMethod        PaymentMethodEnum? @default(STARPAGO)
+  danaWithdrawalMethod       PaymentMethodEnum? @default(STARPAGO)
+  gopayWithdrawalMethod      PaymentMethodEnum? @default(STARPAGO)
+  linkajaWithdrawalMethod    PaymentMethodEnum? @default(STARPAGO)
+  shopeepayWithdrawalMethod  PaymentMethodEnum? @default(STARPAGO)
+  vaWithdrawalMethod         PaymentMethodEnum? @default(STARPAGO)
+
+
   depositInquiryMethod     InquiryMethod?     @default(DATABASE)
   withdrawalInquiryMethod       InquiryMethod?     @default(DATABASE)
   payinxMerchant             PayinxMerchant?          @relation(fields: [payinxMerchantId], references: [id])

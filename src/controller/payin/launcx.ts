@@ -1,21 +1,21 @@
-// src/controllers/payin/launcx.ts
+// src/controller/payin/launcx.ts
 import axios from "axios";
 import { Request, Response } from "express";
 import prisma from "../../lib/prisma.js";
-import { createTxn } from "./index.js";
 import { PROVIDERS } from "../../constants/providers.js";
 
 const launcxApi = axios.create({
-  baseURL: process.env.NODE_ENV === "production"
-    ? "https://launcx.com/api/v1"
-    : "https://staging.launcx.com/api/v1",
+  baseURL:
+    process.env.NODE_ENV === "production"
+      ? "https://launcx.com/api/v1"
+      : "https://staging.launcx.com/api/v1",
   headers: {
     "Content-Type": "application/json",
     "x-api-key": process.env.LAUNCX_API_KEY!,
   },
 });
 
-launcxApi.interceptors.request.use(cfg => {
+launcxApi.interceptors.request.use((cfg) => {
   cfg.headers["x-timestamp"] = Date.now().toString();
   return cfg;
 });
@@ -23,19 +23,21 @@ launcxApi.interceptors.request.use(cfg => {
 export const LauncxPayment = async (req: Request, res: Response) => {
   try {
     const { merchantId } = req.params;
-    const { amount, order_id, playerId, flow = "redirect" } = req.body;
+    const { price, playerId, flow = "redirect" } = req.body;
 
     const merchant = await prisma.merchant.findFirst({
       where: { uid: merchantId },
-      include: { commissions: true },
     });
 
-    if (!merchant) {
-      return res.status(400).json({ error: "Merchant Not Found" });
+    if (!merchant) return res.status(400).json({ error: "Merchant Not Found" });
+
+    const priceNum = Number(price);
+    if (!price || isNaN(priceNum) || priceNum <= 0) {
+      return res.status(400).json({ error: "`price` must be a number greater than 0" });
     }
 
     const payload = {
-      price: Number(amount),
+      price: priceNum,
       playerId: playerId || `merchant_${merchantId}`,
       flow,
     };
@@ -44,36 +46,47 @@ export const LauncxPayment = async (req: Request, res: Response) => {
       validateStatus: () => true,
     });
 
-    // local txn
-    await createTxn({
-      order_id: order_id || response.data?.data?.orderId,
-      transaction_id: response.data?.data?.orderId,
-      amount: Number(amount),
-      status: "pending",
-      type: "wallet",
-      merchant_id: merchant?.merchant_id,
-      commission: merchant?.commissions[0]?.commissionRate,
-      settlementDuration: merchant?.commissions[0]?.settlementDuration,
-      providerDetails: {
-        name: PROVIDERS.LAUNCX,
-        sub_name: PROVIDERS.QRIS, // always QRIS for Launcx
-        transactionId: response.data?.data?.orderId,
+    // Staging uses response.data.data, Production uses response.data.result
+    const orderId = response.data?.data?.orderId || response.data?.result?.orderId;
+    if (!orderId) {
+      console.error("❌ Launcx returned invalid response:", response.data);
+      return res
+        .status(502)
+        .json({ error: "Launcx API unavailable or returned invalid response" });
+    }
+
+    // Create transaction in DB
+    await prisma.transaction.create({
+      data: {
+        merchant_transaction_id: orderId,
+        transaction_id: orderId,
+        date_time: new Date(),
+        original_amount: priceNum,
+        type: "wallet",
+        status: "pending",
+        merchant_id: merchant.merchant_id,
+        settled_amount: 0,
+        balance: 0,
+        providerDetails: {
+          name: PROVIDERS.LAUNCX,
+          sub_name: PROVIDERS.QRIS,
+          transactionId: orderId,
+        },
+        response_message: null,
       },
     });
 
+    // Redirect flow handling
     if (flow === "redirect" && response.status === 303) {
-      return res.status(200).json({
-        status: "success",
-        url: response.headers.location,
-      });
+      return res.status(200).json({ status: "success", url: response.headers.location });
     }
 
-    return res.status(200).json({
-      status: "success",
-      data: response.data,
-    });
+    // Return full response
+    return res.status(200).json({ status: "success", data: response.data });
   } catch (err: any) {
-    console.error("❌ Launcx Error:", err.message);
-    return res.status(500).json({ error: err.message });
+    console.error("❌ Launcx Error:", err.response?.data || err.message);
+    return res.status(500).json({ error: err.message || "Transaction not Created" });
   }
 };
+
+export default { LauncxPayment };

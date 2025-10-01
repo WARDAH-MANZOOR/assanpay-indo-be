@@ -1,0 +1,15 @@
+-- AlterTable
+ALTER TABLE "public"."Merchant" ADD COLUMN     "danaDepositMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO',
+ADD COLUMN     "danaWithdrawalMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO',
+ADD COLUMN     "gopayDepositMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO',
+ADD COLUMN     "gopayWithdrawalMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO',
+ADD COLUMN     "linkajaDepositMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO',
+ADD COLUMN     "linkajaWithdrawalMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO',
+ADD COLUMN     "ovoDepositMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO',
+ADD COLUMN     "ovoWithdrawalMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO',
+ADD COLUMN     "qrisDepositMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO',
+ADD COLUMN     "qrisWithdrawalMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO',
+ADD COLUMN     "shopeepayDepositMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO',
+ADD COLUMN     "shopeepayWithdrawalMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO',
+ADD COLUMN     "vaDepositMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO',
+ADD COLUMN     "vaWithdrawalMethod" "public"."PaymentMethodEnum" DEFAULT 'STARPAGO';
