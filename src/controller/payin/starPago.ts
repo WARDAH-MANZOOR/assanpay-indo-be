@@ -64,8 +64,7 @@ export const StarPagoPayin = async (req: Request, res: Response) => {
 
     // ✅ Generate signature
     const sign = generateStarPagoSignature(
-      process.env.STARPAGO_SECRET!,
-      payloadWithoutSign
+      payloadWithoutSign, process.env.STARPAGO_SECRET!
     );
 
     const payload = { ...payloadWithoutSign, sign };
@@ -81,23 +80,42 @@ export const StarPagoPayin = async (req: Request, res: Response) => {
 
     const data = response.data?.data || {};
 
-    // ✅ Create local txn record
-    await createTxn({
-      order_id,
-      transaction_id: data.orderNo,
-      amount: Number(amount),
-      status: TransactionStatus.pending, // ✅ use enum
-      type: "wallet",
-      merchant_id: merchant.merchant_id,
-      commission: merchant.commissions[0]?.commissionRate,
-      settlementDuration: merchant.commissions[0]?.settlementDuration,
-      providerDetails: {
-        name: PROVIDERS.STARPAGO,
-        sub_name: payMethod,
-        transactionId: data.orderNo,
-      },
-    });
-
+    // // ✅ Create local txn record
+    // await createTxn({
+    //   order_id,
+    //   transaction_id: data.orderNo,
+    //   amount: Number(amount),
+    //   status: TransactionStatus.pending, // ✅ use enum
+    //   type: "wallet",
+    //   merchant_id: merchant.merchant_id,
+    //   commission: merchant.commissions[0]?.commissionRate,
+    //   settlementDuration: merchant.commissions[0]?.settlementDuration,
+    //   providerDetails: {
+    //     name: PROVIDERS.STARPAGO,
+    //     sub_name: payMethod,
+    //     transactionId: data.orderNo,
+    //   },
+    // });
+    // Save transaction
+      await prisma.transaction.create({
+        data: {
+          merchant_transaction_id: data.orderNo, // you may replace with Launcx orderId later
+          transaction_id: data.orderNo,
+          date_time: new Date(),
+          original_amount: Number(amount),
+          type: "wallet",
+          status: "pending",
+          merchant_id: merchant.merchant_id,
+          settled_amount: 0,
+          balance: 0,
+          providerDetails: {
+            name: PROVIDERS.STARPAGO,
+            sub_name: payMethod,
+            transactionId: data.orderNo,
+          },
+          response_message: null,
+        },
+      });
     return res.status(200).json({
       status: "success",
       data: response.data,

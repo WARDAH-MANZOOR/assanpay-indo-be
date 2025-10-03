@@ -24,28 +24,34 @@
 //   // Step 3: MD5 hash (hex)
 //   return crypto.createHash("md5").update(stringToSign).digest("hex");
 // }
+
+
+
 import crypto from "crypto";
 
 /**
  * Generate StarPago signature
  */
-export function generateStarPagoSignature(appSecret: string, data: any): string {
-  const flatData = (obj: any, prefix = ""): string[] => {
-    return Object.keys(obj)
-      .sort()
-      .flatMap((key) => {
-        const value = obj[key];
-        if (value === undefined || value === null || value === "") return [];
-        if (typeof value === "object" && !Array.isArray(value)) {
-          return flatData(value, `${prefix}${key}.`);
-        }
-        return [`${prefix}${key}=${value}`];
-      });
-  };
+export function generateStarPagoSignature(params: any, appSecret: string): string {
+  const parseExtra = (extra: any) => {
+    if (!extra || typeof extra !== 'object') return '';
+    const keys = Object.keys(extra).sort();
+    return keys.map(k => `${k}=${extra[k]}`).join('&');
+  }
 
-  const rawString = flatData(data).join("&");
-  const stringToSign = rawString + appSecret;
+  // filter out undefined, null or empty string keys
+  const topKeys = Object.keys(params).filter(k => k !== 'sign' && params[k] !== undefined && params[k] !== null && params[k] !== '');
+  topKeys.sort();
 
-  return crypto.createHash("md5").update(stringToSign).digest("hex");
+  const paramsString = topKeys.map(k => {
+    if (typeof params[k] === 'object') {
+      return `${k}=${parseExtra(params[k])}`;
+    }
+    return `${k}=${params[k]}`;
+  }).join('&');
+
+  const stringToSign = `${paramsString}&key=${appSecret}`;
+
+  return crypto.createHash('sha256').update(stringToSign, 'utf8').digest('hex');
 }
 

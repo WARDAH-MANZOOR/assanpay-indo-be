@@ -11,21 +11,42 @@ export const LauncxPaynInCallback: RequestHandler = async (req: Request, res: Re
     console.log("📥 Incoming body:", JSON.stringify(req.body, null, 2));
 
     const signature = req.headers["x-callback-signature"] as string;
-    const secret = process.env.LAUNCX_CALLBACK_SECRET!;
 
-    // ✅ Calculate HMAC
-    const payload = JSON.stringify(req.body);
-    const expected = crypto
-      .createHmac("sha256", secret)
-      .update(payload)
-      .digest("hex");
+    // for production after reistering callback url and getting secret
+    
+    // const secret = process.env.LAUNCX_CALLBACK_SECRET!;
 
-    if (signature !== expected) {
+    // // ✅ Calculate HMAC
+    // const payload = JSON.stringify(req.body);
+    // const expected = crypto
+    //   .createHmac("sha256", secret)
+    //   .update(payload)
+    //   .digest("hex");
+
+    // if (signature !== expected) {
+    //   console.log("❌ Invalid signature");
+    //   res.status(400).json({ error: "Invalid signature" });
+    //   return
+    // }
+
+    // for testing (if key in .env is missing, skip signature check)
+    const secret = process.env.LAUNCX_CALLBACK_SECRET;
+
+    let validSignature = true; // default true in test mode
+    if (secret) {
+      const payload = JSON.stringify(req.body);
+      const expected = crypto
+        .createHmac("sha256", secret)
+        .update(payload)
+        .digest("hex");
+      validSignature = (signature === expected);
+    }
+
+    if (!validSignature) {
       console.log("❌ Invalid signature");
       res.status(400).json({ error: "Invalid signature" });
       return
     }
-
     // ✅ Map status correctly
     const statusMap: Record<string, "completed" | "pending" | "failed"> = {
       PAID: "completed",

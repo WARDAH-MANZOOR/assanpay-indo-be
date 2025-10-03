@@ -421,6 +421,95 @@ const directPayin = async (req: Request, res: Response) => {
   }
 }
 
+// export const IndoPayin: RequestHandler = async (req: Request, res: Response) => {
+//   const { merchantId } = req.params;
+//   const { payMethod } = req.body;
+
+//   console.log("Indonesia Payin Request:", { merchantId, payMethod });
+
+//   const merchant = await prisma.merchant.findFirst({
+//     where: { uid: merchantId },
+//     select: {
+//       depositMethod: true,
+//       qrisDepositMethod: true,
+//       ovoDepositMethod: true,
+//       danaDepositMethod: true,
+//       gopayDepositMethod: true,
+//       linkajaDepositMethod: true,
+//       shopeepayDepositMethod: true,
+//       vaDepositMethod: true,
+//     },
+//   });
+
+//   if (!merchant) {
+//     res.status(400).json({ error: "Merchant not found" });
+//     return
+//   }
+
+//   // 🔹 Pick deposit method
+//   let depositMethod: string | null | undefined;
+
+//   switch ((payMethod || "").toLowerCase()) {
+//     case PROVIDERS.QRIS:
+//       depositMethod = merchant.qrisDepositMethod;
+//       break;
+//     case PROVIDERS.OVO:
+//       depositMethod = merchant.ovoDepositMethod;
+//       break;
+//     case PROVIDERS.DANA:
+//       depositMethod = merchant.danaDepositMethod;
+//       break;
+//     case PROVIDERS.GOPAY:
+//       depositMethod = merchant.gopayDepositMethod;
+//       break;
+//     case PROVIDERS.LINKAJA:
+//       depositMethod = merchant.linkajaDepositMethod;
+//       break;
+//     case PROVIDERS.SHOPEEPAY:
+//       depositMethod = merchant.shopeepayDepositMethod;
+//       break;
+//     case PROVIDERS.VA:
+//       depositMethod = merchant.vaDepositMethod;
+//       break;
+//     default:
+//       depositMethod = merchant.depositMethod; // fallback
+//       break;
+//   }
+
+//   if (!depositMethod) {
+//     res.status(500).json({ error: "No deposit method configured for this wallet" });
+//     return
+//   }
+
+//     const provider = depositMethod.toLowerCase();
+
+// // Map aliases
+// const providerAlias: Record<string, string> = {
+//   payinx: PROVIDERS.LAUNCX.toLowerCase(),
+//   launcx: PROVIDERS.LAUNCX.toLowerCase(),
+//   starpago: PROVIDERS.STARPAGO.toLowerCase(),
+// };
+
+// const normalizedProvider = providerAlias[provider] || provider;
+
+// if (normalizedProvider === PROVIDERS.LAUNCX.toLowerCase()) {
+//   await LauncxPayment(req, res);
+//   return;
+// } else if (normalizedProvider === PROVIDERS.STARPAGO.toLowerCase()) {
+//   if (!payMethod) {
+//     res.status(400).json({ error: "payMethod is required for StarPago" });
+//     return;
+//   }
+//   await StarPagoPayin(req, res);
+//   return;
+// } else {
+//   res.status(500).json({ error: `No provider configured for this wallet (${provider})` });
+//   return;
+// }
+
+
+// };
+
 export const IndoPayin: RequestHandler = async (req: Request, res: Response) => {
   const { merchantId } = req.params;
   const { payMethod } = req.body;
@@ -448,7 +537,6 @@ export const IndoPayin: RequestHandler = async (req: Request, res: Response) => 
 
   // 🔹 Pick deposit method
   let depositMethod: string | null | undefined;
-
   switch ((payMethod || "").toLowerCase()) {
     case PROVIDERS.QRIS:
       depositMethod = merchant.qrisDepositMethod;
@@ -471,43 +559,60 @@ export const IndoPayin: RequestHandler = async (req: Request, res: Response) => 
     case PROVIDERS.VA:
       depositMethod = merchant.vaDepositMethod;
       break;
-    default:
-      depositMethod = merchant.depositMethod; // fallback
-      break;
+    // default:
+    //   depositMethod = merchant.depositMethod; // fallback
+    //   break;
   }
-
+    // 🔹 Fallback to main deposit method if wallet-specific is missing or payMethod not provided
+    if (!depositMethod) depositMethod = merchant.depositMethod;
+    
+    // 🔹 Validate consistency with main deposit method
+    if (depositMethod !== merchant.depositMethod) {
+      res.status(400).json({
+        error: `Deposit method mismatch: main deposit method is ${merchant.depositMethod}, but selected wallet deposit method is ${depositMethod}`
+      });
+      return
+    }
   if (!depositMethod) {
     res.status(500).json({ error: "No deposit method configured for this wallet" });
     return
   }
 
-    const provider = depositMethod.toLowerCase();
+  // 🔹 Normalize provider
+  const providerAlias: Record<string, string> = {
+    payinx: PROVIDERS.LAUNCX.toLowerCase(),
+    launcx: PROVIDERS.LAUNCX.toLowerCase(),
+    starpago: PROVIDERS.STARPAGO.toLowerCase(),
+  };
+  const normalizedProvider = providerAlias[depositMethod.toLowerCase()] || depositMethod.toLowerCase();
 
-// Map aliases
-const providerAlias: Record<string, string> = {
-  payinx: PROVIDERS.LAUNCX.toLowerCase(),
-  launcx: PROVIDERS.LAUNCX.toLowerCase(),
-  starpago: PROVIDERS.STARPAGO.toLowerCase(),
-};
+  // 🔹 LAUNCX handler
+  if (normalizedProvider === PROVIDERS.LAUNCX.toLowerCase()) {
+    // Payload validation for Launcx
+    if (!req.body.price || !req.body.playerId) {
+      res.status(400).json({ error: "Payload invalid for Launcx. Required: price, playerId" });
+      return
+    }
+    LauncxPayment(req, res);
+    return
 
-const normalizedProvider = providerAlias[provider] || provider;
+  // 🔹 STARPAGO handler
+  } else if (normalizedProvider === PROVIDERS.STARPAGO.toLowerCase()) {
+    const requiredFields = [
+      "amount", "order_id", "payMethod", "accountName", "accountNo", "bankCode", "email", "mobile"
+    ];
+    const missingFields = requiredFields.filter(f => !req.body[f]);
+    if (missingFields.length > 0) {
+      res.status(400).json({ error: `Payload missing required fields for StarPago: ${missingFields.join(", ")}` });
+      return
+    }
+    StarPagoPayin(req, res);
+    return
 
-if (normalizedProvider === PROVIDERS.LAUNCX.toLowerCase()) {
-  await LauncxPayment(req, res);
-  return;
-} else if (normalizedProvider === PROVIDERS.STARPAGO.toLowerCase()) {
-  if (!payMethod) {
-    res.status(400).json({ error: "payMethod is required for StarPago" });
-    return;
+  } else {
+    res.status(500).json({ error: `No provider configured for this wallet (${depositMethod})` });
+    return
   }
-  await StarPagoPayin(req, res);
-  return;
-} else {
-  res.status(500).json({ error: `No provider configured for this wallet (${provider})` });
-  return;
-}
-
-
 };
 
 
