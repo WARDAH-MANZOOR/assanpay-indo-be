@@ -70,51 +70,148 @@ export function generateStarPagoSignature(params: any, appSecret: string): strin
 
 
 
-/// --------------------- signature for callback testing -----------------------
-const appSecret = "3c7623bacd4c9f1c1ce770f69a31c578";
+// // /// --------------------- signature for callback testing -----------------------
+// // const appSecret = "3c7623bacd4c9f1c1ce770f69a31c578";
 
-interface CallbackParams {
-  orderStatus: string;
-  orderNo: string;
-  merOrderNo: string;
-  amount: string;
-  realAmount?: string; // optional, ignore for signature
-  currency: string;
-  attach: string;
-  createTime: number;
-  updateTime: number;
-  message?: string;    // optional, ignore for signature
-  sign?: string;
+// // interface CallbackParams {
+// //   orderStatus: string;
+// //   orderNo: string;
+// //   merOrderNo: string;
+// //   amount: string;
+// //   realAmount?: string; // optional, ignore for signature
+// //   currency: string;
+// //   attach: string;
+// //   createTime: number;
+// //   updateTime: number;
+// //   message?: string;    // optional, ignore for signature
+// //   sign?: string;
+// // }
+
+// // // Payload with all fields to send in webhook
+// // const callbackPayload: CallbackParams = {
+// //   orderStatus: "2",
+// //   orderNo: "f947e051-154b-4098-bdf3-11ee1294f43c",
+// //   merOrderNo: "f947e051-154b-4098-bdf3-11ee1294f43c",
+// //   amount: "100",
+// //   realAmount: "100",  // included in POST body but NOT in signature
+// //   currency: "IDR",
+// //   attach: "starpago",
+// //   createTime: Date.now(),
+// //   updateTime: Date.now(),
+// //   message: "",         // included in POST body but NOT in signature
+// //   sign: "",            // will be generated
+// // };
+
+// // // ✅ Only required fields for signature
+// // const fieldsForSign = {
+// //   orderStatus: callbackPayload.orderStatus,
+// //   orderNo: callbackPayload.orderNo,
+// //   merOrderNo: callbackPayload.merOrderNo,
+// //   amount: callbackPayload.amount,
+// //   currency: callbackPayload.currency,
+// //   attach: callbackPayload.attach,
+// //   createTime: callbackPayload.createTime,
+// //   updateTime: callbackPayload.updateTime,
+// // };
+
+// // // Generate correct signature
+// // callbackPayload.sign = generateStarPagoSignature(fieldsForSign, appSecret);
+
+// // console.log("✅ Postman-ready payload:\n", JSON.stringify(callbackPayload, null, 2));
+
+
+/// ---------------------- signature for payout testing ------------------------
+
+
+// const appSecret = "3c7623bacd4c9f1c1ce770f69a31c578"; // your actual secret key
+
+// interface PayoutParams {
+//   appId: string;
+//   merOrderNo: string;
+//   currency: string;
+//   amount: string;
+//   notifyUrl: string;
+//   payMethod: string;
+//   extra: {
+//     bankCode: string;
+//     accountNo: string;
+//     accountName: string;
+//     email: string;
+//     mobile: string;
+//   };
+//   attach?: string;
+//   sign?: string;
+// }
+
+// const payoutParams: PayoutParams = {
+//   appId: "7af017ba03bf0034ae2c3400623e5e23",
+//   merOrderNo: "unique-payout-001",
+//   currency: "IDR",
+//   amount: "50000",
+//   notifyUrl: "http://yourserver.com/payout-callback",
+//   payMethod: "ID_VA",
+//   extra: {
+//     bankCode: "BCA",             // sample bank code
+//     accountNo: "1234567890",     // receiver account
+//     accountName: "John Doe",
+//     email: "john@example.com",
+//     mobile: "081234567890"
+//   },
+//   attach: "optional-note"
+// };
+
+// // ✅ Generate Signature
+// payoutParams.sign = generateStarPagoSignature(payoutParams, appSecret);
+
+// console.log("✅ Final Postman-ready payout payload:\n", JSON.stringify(payoutParams, null, 2))
+
+/// ---------------------- signature for payout webhook testing ------------------------
+
+const appSecret = "3c7623bacd4c9f1c1ce770f69a31c578"; // your StarPago secret key
+
+interface PayoutWebhookParams {
+  orderStatus: string;    // 订单状态
+  orderNo: string;        // 交易订单号
+  merOrderNo: string;     // 商户订单号
+  amount: string;         // 订单金额
+  currency: string;       // 金额币种
+  attach: string;         // 附加信息
+  receiptUrl?: string;    // 凭证信息 (optional)
+  createTime: number;     // 创建时间
+  updateTime: number;     // 更新时间
+  message?: string;       // 描述信息 (optional)
+  sign?: string;          // 签名
 }
 
-// Payload with all fields to send in webhook
-const callbackPayload: CallbackParams = {
-  orderStatus: "2",
-  orderNo: "f947e051-154b-4098-bdf3-11ee1294f43c",
-  merOrderNo: "f947e051-154b-4098-bdf3-11ee1294f43c",
-  amount: "100",
-  realAmount: "100",  // included in POST body but NOT in signature
+// 🔹 Create mock payload (for simulation)
+const payoutWebhookPayload: PayoutWebhookParams = {
+  orderStatus: "2",  // 2 or 3 = success
+  orderNo: "DEV-2025100611553605znb", //system order id
+  merOrderNo: "unique-order-005",
+  amount: "10000",
   currency: "IDR",
   attach: "starpago",
+  receiptUrl: "https://starpago.com/receipt/sample.jpg", // optional
   createTime: Date.now(),
   updateTime: Date.now(),
-  message: "",         // included in POST body but NOT in signature
-  sign: "",            // will be generated
+  message: "Payout completed successfully",
+  sign: "",
 };
 
-// ✅ Only required fields for signature
-const fieldsForSign = {
-  orderStatus: callbackPayload.orderStatus,
-  orderNo: callbackPayload.orderNo,
-  merOrderNo: callbackPayload.merOrderNo,
-  amount: callbackPayload.amount,
-  currency: callbackPayload.currency,
-  attach: callbackPayload.attach,
-  createTime: callbackPayload.createTime,
-  updateTime: callbackPayload.updateTime,
+// ✅ Only include fields required for signing
+const payoutWebhookFieldsForSign = {
+  orderStatus: payoutWebhookPayload.orderStatus,
+  orderNo: payoutWebhookPayload.orderNo,
+  merOrderNo: payoutWebhookPayload.merOrderNo,
+  amount: payoutWebhookPayload.amount,
+  currency: payoutWebhookPayload.currency,
+  attach: payoutWebhookPayload.attach,
+  createTime: payoutWebhookPayload.createTime,
+  updateTime: payoutWebhookPayload.updateTime,
 };
 
-// Generate correct signature
-callbackPayload.sign = generateStarPagoSignature(fieldsForSign, appSecret);
+// ✅ Generate signature
+payoutWebhookPayload.sign = generateStarPagoSignature(payoutWebhookFieldsForSign, appSecret);
 
-console.log("✅ Postman-ready payload:\n", JSON.stringify(callbackPayload, null, 2));
+// ✅ Print final Postman-ready webhook JSON
+console.log("✅ Final StarPago Payout Webhook Payload:\n", JSON.stringify(payoutWebhookPayload, null, 2));

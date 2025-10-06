@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import prisma from "../../lib/prisma.js";
 import { Decimal } from "@prisma/client/runtime/library";
 import axios from "axios";
 import { PROVIDERS } from "../../constants/providers.js";
@@ -94,93 +95,98 @@ function formatProvider(input: string): string | null {
     // English: Here, we are using providerMap in a way that avoids TypeScript error
     return (providerMap as Record<string, string>)[key] || null;
 }
-const starPagoPayoutController = async (req: Request, res: Response) => {
+
+
+export const starPagoPayoutController = async (req: Request, res: Response) => {
   let merchantAmount = new Decimal(0);
   let balanceDeducted = false;
   let findMerchant: any = null;
 
   try {
-    let { amount, payMethod, bankCode, accountNo, accountName, email, mobile, order_id } = req.body;
-    let { merchantId } = req.params;
+    const { amount, payMethod, bankCode, accountNo, accountName, email, mobile, order_id } = req.body;
+    const { merchantId } = req.params;
 
     if (!amount || !payMethod || !bankCode || !accountNo || !accountName || !email || !mobile) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+    // 🔍 Get merchant
     findMerchant = await merchantService.findOne({ uid: merchantId });
     if (!findMerchant) return res.status(400).json({ error: "Merchant Not Found" });
 
+    // 🔍 Prevent duplicate order
     if (order_id) {
-      const checkOrder = await prisma?.disbursement.findFirst({
+      const checkOrder = await prisma.disbursement.findFirst({
         where: { merchant_custom_order_id: order_id },
       });
       if (checkOrder) return res.status(400).json({ error: "Order ID already exists" });
     }
 
-    let totalCommission: Decimal = new Decimal(0);
-    let totalGST: Decimal = new Decimal(0);
-    let totalWithholdingTax: Decimal = new Decimal(0);
-    let amountDecimal: Decimal = new Decimal(amount);
+    const id = createTransactionId();
+    const finalOrderId = order_id || id;
+    const amountDecimal = new Decimal(amount);
 
-    let id = createTransactionId();
-    order_id = order_id || id;
-    merchantAmount = new Decimal(amount);
+    // 🔹 Calculate Deductions
+    await prisma.$transaction(async (tx) => {
+      const rate = await getMerchantRate(tx, findMerchant.merchant_id);
 
-    // ⭐ Transaction Start
-    await prisma?.$transaction(async (tx) => {
-      let rate = await getMerchantRate(tx, findMerchant?.merchant_id as number);
-
-      // Calculate deductions
-      totalCommission = amountDecimal.mul(rate.disbursementRate);
-      totalGST = amountDecimal.mul(rate.disbursementGST);
-      totalWithholdingTax = amountDecimal.mul(rate.disbursementWithHoldingTax);
+      const totalCommission = amountDecimal.mul(rate.disbursementRate);
+      const totalGST = amountDecimal.mul(rate.disbursementGST);
+      const totalWithholdingTax = amountDecimal.mul(rate.disbursementWithHoldingTax);
 
       const totalDeductions = totalCommission.plus(totalGST).plus(totalWithholdingTax);
-      merchantAmount = amountDecimal.plus(totalDeductions); // same pattern as DalalMart
+      merchantAmount = amountDecimal.plus(totalDeductions);
 
-      if (findMerchant?.balanceToDisburse && merchantAmount.gt(findMerchant.balanceToDisburse)) {
+      if (findMerchant.balanceToDisburse && merchantAmount.gt(findMerchant.balanceToDisburse)) {
         throw new Error("Insufficient balance to disburse");
       }
 
-      await adjustMerchantToDisburseBalance(findMerchant?.uid as string, +merchantAmount, false);
+      await adjustMerchantToDisburseBalance(findMerchant.uid, +merchantAmount, false);
       balanceDeducted = true;
-    }, {
-      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
-      maxWait: 60000,
-      timeout: 60000,
     });
 
-    // 🔑 StarPago Payload
-    const payload: any = {
-      appId: process.env.STARPAGO_APP_ID,
-      merOrderNo: order_id,
+    // 🔑 Construct StarPago Payout Payload (same structure as your working Postman test)
+    const payloadWithoutSign = {
+      appId: process.env.STARPAGO_APP_ID!,
+      merOrderNo: finalOrderId,
       currency: "IDR",
-      amount: amount,
-      notifyUrl: process.env.STARPAGO_NOTIFY_URL,
+      amount: amount.toString(),
+      notifyUrl: process.env.STARPAGO_NOTIFY_URL!,
       payMethod,
-      extra: { email, mobile, bankCode, accountNo, accountName },
+      extra: {
+        bankCode,
+        accountNo,
+        accountName,
+        email,
+        mobile,
+      },
       attach: "StarPago Payout",
     };
+    // ✅ Generate signature
+      const sign = generateStarPagoSignature(
+        payloadWithoutSign, process.env.STARPAGO_SECRET!
+      );
 
-    payload.sign = generateStarPagoSignature(process.env.STARPAGO_APP_SECRET!, payload);
+    const payload = { ...payloadWithoutSign, sign };
+    console.log("🟢 StarPago Payout Payload:", JSON.stringify(payload, null, 2));
 
-    // API Call
+    // 🚀 API Request
     const response = await axios.post(
       `${process.env.STARPAGO_BASE_URL}/api/v2/payout/order/create`,
       payload,
       { headers: { "Content-Type": "application/json" } }
     );
 
-    // Prisma Save
+    // 🧾 Save in DB
     const date = toZonedTime(new Date(), "Asia/Jakarta");
-    const disbursement = await prisma?.disbursement.create({
+    const disbursement = await prisma.disbursement.create({
       data: {
         merchant_id: findMerchant.merchant_id,
         disbursementDate: date,
         transactionAmount: amountDecimal,
-        commission: totalCommission,
-        gst: totalGST,
-        withholdingTax: totalWithholdingTax,
+        commission: new Decimal(0),
+        gst: new Decimal(0),
+        withholdingTax: new Decimal(0),
         merchantAmount: amountDecimal,
         platform: 0,
         account: accountNo,
@@ -190,26 +196,29 @@ const starPagoPayoutController = async (req: Request, res: Response) => {
         to_provider: PROVIDERS.STARPAGO,
         providerDetails: { id: 1, sub_name: "StarPago" },
         system_order_id: id,
-        merchant_custom_order_id: order_id,
+        merchant_custom_order_id: finalOrderId,
       },
     });
 
     return res.status(200).json({
       status: "success",
-      data: { response: response.data, disbursement },
-      message: "Payout initiated successfully",
+      data: {
+        payoutResponse: response.data,
+      },
     });
-
   } catch (error: any) {
-    console.error("StarPago Error:", error.message);
+    console.error("🚨 StarPago Payout Error:", error.message);
     if (balanceDeducted && findMerchant) {
       await adjustMerchantToDisburseBalance(findMerchant.uid, +merchantAmount, true);
     }
-    return res.status(500).json({ status: "error", message: error.message, data: error.response?.data });
+    return res.status(500).json({
+      status: "error",
+      message: error.message,
+      data: error.response?.data || null,
+    });
   }
 };
 
-
 export default {
-    starPagoPayoutController
-}
+  starPagoPayoutController,
+};

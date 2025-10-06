@@ -129,13 +129,30 @@ export const StarPagoPayoutCallback:RequestHandler = async (req: Request, res: R
 
     const { sign, ...rest } = req.body;
 
-    // ✅ Signature verify
-    const expectedSign = generateStarPagoSignature(process.env.STARPAGO_SECRET!, rest);
+    // // ✅ Signature verify
+    // const expectedSign = generateStarPagoSignature(process.env.STARPAGO_SECRET!, rest);
+    // if (sign !== expectedSign) {
+    //   console.log("❌ Invalid signature");
+    //   res.status(400).json({ error: "Invalid signature" });
+    //   return
+    // }
+    const fieldsForSign = {
+      orderStatus: rest.orderStatus,
+      orderNo: rest.orderNo,
+      merOrderNo: rest.merOrderNo,
+      amount: rest.amount,
+      currency: rest.currency,
+      attach: rest.attach,
+      createTime: rest.createTime,
+      updateTime: rest.updateTime,
+    };
+
+    const expectedSign = generateStarPagoSignature(fieldsForSign, process.env.STARPAGO_SECRET!);
     if (sign !== expectedSign) {
-      console.log("❌ Invalid signature");
-      res.status(400).json({ error: "Invalid signature" });
-      return
-    }
+          console.log("❌ Invalid signature");
+          res.status(400).json({ error: "Invalid signature" });
+          return;
+        }
 
     // ✅ Status mapping
     const statusMap: Record<string, string> = {

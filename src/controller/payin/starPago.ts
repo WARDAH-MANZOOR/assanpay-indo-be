@@ -12,7 +12,7 @@ import { addWeekdays } from "../../utils/date_method.js";
 
 const STARPAGO_HOST =
   process.env.NODE_ENV === "production"
-    ? process.env.STARPAGO_PROD_URL
+    ? process.env.STARPAGO_BASE_URL
     : process.env.STARPAGO_SANDBOX_URL;
 
 /**

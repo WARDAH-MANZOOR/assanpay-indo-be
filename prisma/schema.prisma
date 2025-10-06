@@ -143,7 +143,6 @@ model Merchant {
   vaDepositMethod         PaymentMethodEnum? @default(STARPAGO)
 
   // Withdrawals
-  qrisWithdrawalMethod       PaymentMethodEnum? @default(STARPAGO)
   ovoWithdrawalMethod        PaymentMethodEnum? @default(STARPAGO)
   danaWithdrawalMethod       PaymentMethodEnum? @default(STARPAGO)
   gopayWithdrawalMethod      PaymentMethodEnum? @default(STARPAGO)
