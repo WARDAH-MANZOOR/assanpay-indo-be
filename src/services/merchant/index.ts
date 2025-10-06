@@ -40,7 +40,7 @@ const updateMerchant = async (payload: Merchant) => {
     // let enc = stringToBoolean(encrypted);
     let result = await prisma.$transaction(async (tx) => {
       let method = depositMethod?.toUpperCase();
-      if (method != "PAYINX") {
+      if (method != "STARPAGO") {
         throw new CustomError("Easy Paisa Method not valid", 400);
       }
       let payoutCallbackUrl = callback_mode === "SINGLE" ? null : payout_callback;

@@ -7,8 +7,8 @@ const router = Router();
 // Generic Payin Route (Indo wallets like OVO, DANA, QRIS, etc.)
 router.post("/:merchantId", payout.IndoPayout);
 
-// Webhook endpoints (these are called by providers, not Postman directly)
-router.post("/callback/starpago", starPagoCallback.StarPagoPayoutCallback);
+// // Webhook endpoints (these are called by providers, not Postman directly)
+// router.post("/callback/starpago", starPagoCallback.StarPagoPayoutCallback);
 
 
 export default router;

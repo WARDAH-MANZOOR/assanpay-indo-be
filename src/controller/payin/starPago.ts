@@ -15,9 +15,23 @@ const STARPAGO_HOST =
     ? process.env.STARPAGO_BASE_URL
     : process.env.STARPAGO_SANDBOX_URL;
 
-/**
- * Create StarPago Payin
- */
+const STAR_PAGO_METHODS: Record<string, { code: string; bankCode: string }> = {
+  qris: { code: "ID_QRIS", bankCode: "QRIS" },
+  id_qris: { code: "ID_QRIS", bankCode: "QRIS" },
+  ovo: { code: "ID_OVO", bankCode: "OVO" },
+  id_ovo: { code: "ID_OVO", bankCode: "OVO" },
+  dana: { code: "ID_DANA", bankCode: "DANA" },
+  id_dana: { code: "ID_DANA", bankCode: "DANA" },
+  shopeepay: { code: "ID_SHOPEEPAY", bankCode: "SHOPEEPAY" },
+  id_shopeepay: { code: "ID_SHOPEEPAY", bankCode: "SHOPEEPAY" },
+  gopay: { code: "ID_GOPAY", bankCode: "GOPAY" },
+  id_gopay: { code: "ID_GOPAY", bankCode: "GOPAY" },
+  linkaja: { code: "ID_LINKAJA", bankCode: "LINKAJA" },
+  id_linkaja: { code: "ID_LINKAJA", bankCode: "LINKAJA" },
+  va: { code: "ID_VA", bankCode: "" },
+  id_va: { code: "ID_VA", bankCode: "" },
+};
+
 export const StarPagoPayin = async (req: Request, res: Response) => {
   try {
     const { merchantId } = req.params;
@@ -41,6 +55,17 @@ export const StarPagoPayin = async (req: Request, res: Response) => {
 
     if (!merchant) {
       return res.status(400).json({ error: "Merchant Not Found" });
+    }
+    // ✅ Map payMethod to StarPago code
+    const method = STAR_PAGO_METHODS[payMethod.toLowerCase()];
+    if (!method) {
+      return res.status(400).json({ error: `Invalid payMethod: ${payMethod}` });
+    }
+     const finalBankCode = method.bankCode || bankCode;
+    if (!finalBankCode) {
+      return res
+        .status(400)
+        .json({ error: `bankCode is required for payMethod: ${payMethod}` });
     }
 
     // ✅ Payload (without sign)
@@ -99,7 +124,7 @@ export const StarPagoPayin = async (req: Request, res: Response) => {
     // Save transaction
       await prisma.transaction.create({
         data: {
-          merchant_transaction_id: data.orderNo, // you may replace with Launcx orderId later
+          merchant_transaction_id: data.orderNo, 
           transaction_id: data.orderNo,
           date_time: new Date(),
           original_amount: Number(amount),

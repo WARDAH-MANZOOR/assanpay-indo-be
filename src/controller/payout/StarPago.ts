@@ -95,6 +95,20 @@ function formatProvider(input: string): string | null {
     // English: Here, we are using providerMap in a way that avoids TypeScript error
     return (providerMap as Record<string, string>)[key] || null;
 }
+const STAR_PAGO_METHODS: Record<string, { code: string; bankCode: string }> = {
+  ovo: { code: "ID_OVO", bankCode: "OVO" },
+  id_ovo: { code: "ID_OVO", bankCode: "OVO" },
+  dana: { code: "ID_DANA", bankCode: "DANA" },
+  id_dana: { code: "ID_DANA", bankCode: "DANA" },
+  shopeepay: { code: "ID_SHOPEEPAY", bankCode: "SHOPEEPAY" },
+  id_shopeepay: { code: "ID_SHOPEEPAY", bankCode: "SHOPEEPAY" },
+  gopay: { code: "ID_GOPAY", bankCode: "GOPAY" },
+  id_gopay: { code: "ID_GOPAY", bankCode: "GOPAY" },
+  linkaja: { code: "ID_LINKAJA", bankCode: "LINKAJA" },
+  id_linkaja: { code: "ID_LINKAJA", bankCode: "LINKAJA" },
+  va: { code: "ID_VA", bankCode: "" },
+  id_va: { code: "ID_VA", bankCode: "" },
+};
 
 
 export const starPagoPayoutController = async (req: Request, res: Response) => {
@@ -144,6 +158,19 @@ export const starPagoPayoutController = async (req: Request, res: Response) => {
       await adjustMerchantToDisburseBalance(findMerchant.uid, +merchantAmount, false);
       balanceDeducted = true;
     });
+    const method = STAR_PAGO_METHODS[payMethod.toLowerCase()];
+    if (!method) {
+      return res.status(400).json({ error: `Invalid payMethod: ${payMethod}` });
+    }
+    const finalBankCode = method.bankCode || bankCode;
+    if (!finalBankCode && method.code !== "ID_VA") {
+      return res
+        .status(400)
+        .json({ error: `bankCode is required for payMethod: ${payMethod}` });
+    }
+
+    console.log("Balance To Disburse:", findMerchant.balanceToDisburse.toString());
+    console.log("Calculated Merchant Amount:", merchantAmount.toString());
 
     // 🔑 Construct StarPago Payout Payload (same structure as your working Postman test)
     const payloadWithoutSign = {
@@ -152,9 +179,9 @@ export const starPagoPayoutController = async (req: Request, res: Response) => {
       currency: "IDR",
       amount: amount.toString(),
       notifyUrl: process.env.STARPAGO_NOTIFY_URL!,
-      payMethod,
+      payMethod:method.code,  // ✅ raw name like 'ovo', 'dana',
       extra: {
-        bankCode,
+        bankCode: finalBankCode,
         accountNo,
         accountName,
         email,

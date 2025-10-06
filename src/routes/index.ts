@@ -1,5 +1,5 @@
 import { Application } from "express";
-import autoCashin from "./payin/index.js"
+// import autoCashin from "./payin/index.js"
 import IndoPayin from "./payin/indoPayin.js"
 import IndoPayout from "./payout/indoPayout.js"
 import callback from "./callback/index.js"
@@ -23,18 +23,18 @@ import tele from "./tele/index.js"
 import password_hash from "./password_hash/index.js"
 import otp from "./otp/index.js"
 import statusInquiry from "./status-inquiry/index.js"
-import payout from "./payout/index.js"
+// import payout from "./payout/index.js"
 import disbursement from "./disbursement/index.js"
 import chargeback from "./chargeback/index.js"
 import topup from "./topup/index.js"
 
 export default function (app: Application) {
-    app.use("/api/cashin", autoCashin);
+    // app.use("/api/cashin", autoCashin);
     app.use("/api/payin", IndoPayin);
     app.use("/api/payout", IndoPayout);
     app.use("/api/callback", callback);
     app.use("/api/status-inquiry", statusInquiry);
-    app.use("/api/cashout", payout);
+    // app.use("/api/cashout", payout);
     app.use("/api/merchant", merchant);
     app.use("/api/dashboard", dashboard);
     app.use("/api/transactions", transaction);

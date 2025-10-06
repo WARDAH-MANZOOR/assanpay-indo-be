@@ -34,10 +34,6 @@ enum ProviderEnum {
 
 // Define Enum for Easypaisa Payment Method
 enum PaymentMethodEnum {
-  PAYINX
-  DALALMART
-  SHURJOPAY
-  BKASHSETUP
   STARPAGO
   LAUNCX
 }
@@ -124,14 +120,8 @@ model Merchant {
   SettlementReport           SettlementReport[]
   groups Group[]
 
-  // Easypaisa-specific
-  depositMethod     PaymentMethodEnum? @default(PAYINX)
-  bkashDepositMethod PaymentMethodEnum? @default(PAYINX)
-  nagadDepositMethod PaymentMethodEnum? @default(PAYINX)
-  withdrawalMethod     PaymentMethodEnum? @default(PAYINX)
-  bkashWithdrawalMethod PaymentMethodEnum? @default(PAYINX)
-  nagadWithdrawalMethod PaymentMethodEnum? @default(PAYINX)
-
+  depositMethod     PaymentMethodEnum? @default(STARPAGO)
+  withdrawalMethod     PaymentMethodEnum? @default(STARPAGO)
 
   // Indonesia wallets
   qrisDepositMethod       PaymentMethodEnum? @default(STARPAGO)
@@ -143,6 +133,7 @@ model Merchant {
   vaDepositMethod         PaymentMethodEnum? @default(STARPAGO)
 
   // Withdrawals
+  qrisWithdrawalMethod        PaymentMethodEnum? @default(STARPAGO)
   ovoWithdrawalMethod        PaymentMethodEnum? @default(STARPAGO)
   danaWithdrawalMethod       PaymentMethodEnum? @default(STARPAGO)
   gopayWithdrawalMethod      PaymentMethodEnum? @default(STARPAGO)

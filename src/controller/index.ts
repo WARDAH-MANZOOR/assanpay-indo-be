@@ -17,17 +17,17 @@ import otpController from "./otp/index.js"
 import statusInquiry from "./status-inquiry/index.js";
 import payout from "./payout/index.js";
 import disbursement from "./disbursement/index.js";
-import dalalmartPayin from "./payin/dalalmart.js";
-import dalalmartCallback from "./callback/dalalmart.js";
-import dalalMartPayout from "./payout/dalalmart.js";
+// import dalalmartPayin from "./payin/dalalmart.js";
+// import dalalmartCallback from "./callback/dalalmart.js";
+// import dalalMartPayout from "./payout/dalalmart.js";
 import starPagoPayin from "./payin/starPago.js";
 import starPagoCallback from "./callback/starPago.js";
 import starPagoPayout from "./payout/StarPago.js";
 import launcxPayin from "./payin/launcx.js";
 
 import launcxCallback from "./callback/launcx.js";
-import dalalmartStatusInquiry from "./status-inquiry/dalalmart.js";
-import shurjoPayStatusInquiry from "./status-inquiry/shurjoPay.js";
+// import dalalmartStatusInquiry from "./status-inquiry/dalalmart.js";
+// import shurjoPayStatusInquiry from "./status-inquiry/shurjoPay.js";
 import chargeback from "./chargeback/index.js";
 import topup from "./topup/index.js";
 
@@ -51,16 +51,16 @@ export {
     statusInquiry,
     payout,
     disbursement,
-    dalalmartPayin,
-    dalalmartCallback,
+    // dalalmartPayin,
+    // dalalmartCallback,
     starPagoPayin,
     starPagoCallback,
     starPagoPayout,
     launcxPayin,
     launcxCallback,
-    dalalMartPayout,
-    dalalmartStatusInquiry,
-    shurjoPayStatusInquiry,
+    // dalalMartPayout,
+    // dalalmartStatusInquiry,
+    // shurjoPayStatusInquiry,
     chargeback,
     topup
 }

@@ -20,128 +20,128 @@ const getHeaders = (includePublicKey = false) => {
 
     return headers;
 };
-const payinxPayinInquiry = async (body: any) => {
-    try {
-        const { ref } = body;
-        const { merchantId } = body;
-        if (!ref) return { error: 'ref query parameter is required' };
+// const payinxPayinInquiry = async (body: any) => {
+//     try {
+//         const { ref } = body;
+//         const { merchantId } = body;
+//         if (!ref) return { error: 'ref query parameter is required' };
 
-        const response = await axios.get(
-            `${process.env.PAYINX_BASE_URL}/api/v1/cash_check?ref=${ref}`,
-            { headers: getHeaders() }
-        );
+//         const response = await axios.get(
+//             `${process.env.PAYINX_BASE_URL}/api/v1/cash_check?ref=${ref}`,
+//             { headers: getHeaders() }
+//         );
 
-        if (response.data.status === 200 || response.data.status === 201) {
-            console.log(response)
-            if (response.data.data.length > 0) {
-                delete response.data.data[0].callback_url;
-                return { status: 'success', data: { ...response.data.data[0] }, message: 'Payment status retrieved successfully' };
-            }
-            else {
-                return { status: 'error', message: 'Transaction Not Found', data: response.data };
-            }
-        } else {
-            return { status: 'error', message: 'Failed to retrieve payment status', data: response.data };
-        }
+//         if (response.data.status === 200 || response.data.status === 201) {
+//             console.log(response)
+//             if (response.data.data.length > 0) {
+//                 delete response.data.data[0].callback_url;
+//                 return { status: 'success', data: { ...response.data.data[0] }, message: 'Payment status retrieved successfully' };
+//             }
+//             else {
+//                 return { status: 'error', message: 'Transaction Not Found', data: response.data };
+//             }
+//         } else {
+//             return { status: 'error', message: 'Failed to retrieve payment status', data: response.data };
+//         }
 
-    } catch (error: any) {
-        console.error('Error checking payment status:', error.message);
-        return { status: 'error', message: error.message, data: error.response?.data };
-    }
-}
+//     } catch (error: any) {
+//         console.error('Error checking payment status:', error.message);
+//         return { status: 'error', message: error.message, data: error.response?.data };
+//     }
+// }
 
-const dalalMartPayinStatusInquiry = async (body: any) => {
-    try {
+// const dalalMartPayinStatusInquiry = async (body: any) => {
+//     try {
 
-        const { ref } = body;
-        const transaction = await prisma?.transaction.findUnique({
-            where: {
-                merchant_transaction_id: ref as string
-            }
-        })
+//         const { ref } = body;
+//         const transaction = await prisma?.transaction.findUnique({
+//             where: {
+//                 merchant_transaction_id: ref as string
+//             }
+//         })
 
-        let tokenData = new FormData();
-        tokenData.append('grant_type', 'password');
-        tokenData.append('client_id', '9f31a45a-3541-4abf-ac92-f56bb798803d');
-        tokenData.append('client_secret', 'WMr9AIVJ8TknW2Pu4aAA3dcz0hzAbb5sFcoiNIJD ');
-        tokenData.append('username', '1EwuN17@store.com');
-        tokenData.append('password', 'DevTecTsePay@123789.');
+//         let tokenData = new FormData();
+//         tokenData.append('grant_type', 'password');
+//         tokenData.append('client_id', '9f31a45a-3541-4abf-ac92-f56bb798803d');
+//         tokenData.append('client_secret', 'WMr9AIVJ8TknW2Pu4aAA3dcz0hzAbb5sFcoiNIJD ');
+//         tokenData.append('username', '1EwuN17@store.com');
+//         tokenData.append('password', 'DevTecTsePay@123789.');
 
-        let tokenConfig = {
-            method: 'post',
-            maxBodyLength: Infinity,
-            url: 'https://live.dalalmart.com/oauth/token',
-            headers: {
-                'Accept': 'application/json',
-                ...tokenData.getHeaders()
-            },
-            data: tokenData
-        };
+//         let tokenConfig = {
+//             method: 'post',
+//             maxBodyLength: Infinity,
+//             url: 'https://live.dalalmart.com/oauth/token',
+//             headers: {
+//                 'Accept': 'application/json',
+//                 ...tokenData.getHeaders()
+//             },
+//             data: tokenData
+//         };
 
-        let token = await axios.request(tokenConfig)
-            .then((response) => {
-                return response.data;
-            })
-            .catch((error) => {
-                return error;
-            });
-        console.log(token)
-        if (!token?.access_token) {
-            return { status: "error", message: "No Token Recieved" }
-        }
+//         let token = await axios.request(tokenConfig)
+//             .then((response) => {
+//                 return response.data;
+//             })
+//             .catch((error) => {
+//                 return error;
+//             });
+//         console.log(token)
+//         if (!token?.access_token) {
+//             return { status: "error", message: "No Token Recieved" }
+//         }
 
-        let inquiryConfig = {
-            method: 'get',
-            maxBodyLength: Infinity,
-            url: `https://live.dalalmart.com/api/paymentroute/query-txn/${ref}`,
-            headers: {
-                'Authorization': `Bearer ${token?.access_token}`
-            }
-        };
+//         let inquiryConfig = {
+//             method: 'get',
+//             maxBodyLength: Infinity,
+//             url: `https://live.dalalmart.com/api/paymentroute/query-txn/${ref}`,
+//             headers: {
+//                 'Authorization': `Bearer ${token?.access_token}`
+//             }
+//         };
 
-        let inquiryResponse = await axios.request(inquiryConfig)
-            .then((response) => {
-                return response.data;
-            })
-            .catch((error) => {
-                return error;
-            });
+//         let inquiryResponse = await axios.request(inquiryConfig)
+//             .then((response) => {
+//                 return response.data;
+//             })
+//             .catch((error) => {
+//                 return error;
+//             });
 
-        if (inquiryResponse?.code == 200) {
-            return {
-                status: "success", data: {
-                    "reference": inquiryResponse?.data?.order_id,
-                    "payment_method": inquiryResponse?.data?.txn_processor.toLocaleLowerCase(),
-                    "trxID": inquiryResponse?.data?.bank_txn_id,
-                    "payment_id": "",
-                    "currency": "BDT",
-                    "amount": inquiryResponse?.data?.amount,
-                    "transactionStatus": inquiryResponse?.data?.txn_status
-                }, message: 'Payment status retrieved successfully'
-            }
-        }
-        else if (inquiryResponse?.code == 500) {
-            return {
-                status: 'error', message: 'Transaction Failed', data: {
-                    "reference": ref,
-                    "payment_method": (transaction?.providerDetails as JsonObject)?.name,
-                    "trxID": "",
-                    "payment_id": "",
-                    "currency": "BDT",
-                    "amount": transaction?.original_amount,
-                    "transactionStatus": transaction?.status
-                }
-            };
-        }
-        else {
-            return { status: 'error', message: 'Failed to retrieve payment status', data: inquiryResponse.data };
-        }
-    }
-    catch (err: any) {
-        console.error('Error checking payment status:', err.message);
-        return { status: 'error', message: err.message, data: err.response?.data };
-    }
-}
+//         if (inquiryResponse?.code == 200) {
+//             return {
+//                 status: "success", data: {
+//                     "reference": inquiryResponse?.data?.order_id,
+//                     "payment_method": inquiryResponse?.data?.txn_processor.toLocaleLowerCase(),
+//                     "trxID": inquiryResponse?.data?.bank_txn_id,
+//                     "payment_id": "",
+//                     "currency": "BDT",
+//                     "amount": inquiryResponse?.data?.amount,
+//                     "transactionStatus": inquiryResponse?.data?.txn_status
+//                 }, message: 'Payment status retrieved successfully'
+//             }
+//         }
+//         else if (inquiryResponse?.code == 500) {
+//             return {
+//                 status: 'error', message: 'Transaction Failed', data: {
+//                     "reference": ref,
+//                     "payment_method": (transaction?.providerDetails as JsonObject)?.name,
+//                     "trxID": "",
+//                     "payment_id": "",
+//                     "currency": "BDT",
+//                     "amount": transaction?.original_amount,
+//                     "transactionStatus": transaction?.status
+//                 }
+//             };
+//         }
+//         else {
+//             return { status: 'error', message: 'Failed to retrieve payment status', data: inquiryResponse.data };
+//         }
+//     }
+//     catch (err: any) {
+//         console.error('Error checking payment status:', err.message);
+//         return { status: 'error', message: err.message, data: err.response?.data };
+//     }
+// }
 
 const pendingCron = async (req: Request, res: Response) => {
     // Define PKT timezone

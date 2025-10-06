@@ -15,13 +15,6 @@ export const StarPagoPayInCallback: RequestHandler= async (req: Request, res: Re
 
     const { sign, ...rest } = req.body;
 
-    // // ✅ Signature verify
-    // const expectedSign = generateStarPagoSignature(process.env.STARPAGO_SECRET!, rest);
-    // if (sign !== expectedSign) {
-    //   console.log("❌ Invalid signature");
-    //   res.status(400).json({ error: "Invalid signature" });
-    //   return
-    // }
 // 🔹 Use ONLY required fields for signature verification
     const fieldsForSign = {
       orderStatus: rest.orderStatus,

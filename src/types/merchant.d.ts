@@ -19,8 +19,8 @@ export interface Merchant {
   webhook_url: string;
   uid?: string;
   EasyPaisaDisburseAccountId?: number | null;
-  depositMethod: "PAYINX";
-  withdrawalMethod: "PAYINX";
+  depositMethod: "STARPAGO";
+  withdrawalMethod: "STARPAGO";
   encrypted: string;
   callback_mode: "SINGLE" | "DOUBLE";
   payout_callback: string;

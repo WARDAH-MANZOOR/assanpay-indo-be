@@ -48,7 +48,7 @@ export function generateStarPagoSignature(params: any, appSecret: string): strin
 
 // const params: PayinParams = {
 //   appId: "7af017ba03bf0034ae2c3400623e5e23",
-//   merOrderNo: "4085_12200315",
+//   merOrderNo: "4085_12200315", //order_id
 //   notifyUrl: "http://bsjugem.cg/ikx",
 //   currency: "IDR",
 //   amount: "100",
